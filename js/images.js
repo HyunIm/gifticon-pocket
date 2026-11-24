@@ -31,6 +31,23 @@ export async function makeThumbnail(blob, width = 240) {
   }
 }
 
+// Camera photos can be 4000px and several MB. Stored coupons only need to stay scannable, so
+// large photos are kept at 1600px wide (still far more than a barcode needs). Screenshots and
+// anything already small are stored untouched.
+export async function shrinkForStorage(blob, { maxBytes = 1.5 * 1048576, maxWidth = 1600 } = {}) {
+  if (blob.size <= maxBytes || blob.type === 'image/gif') return blob;
+  const bitmap = await createImageBitmap(blob);
+  try {
+    if (bitmap.width <= maxWidth) return blob;
+    const scale = maxWidth / bitmap.width;
+    const canvas = drawScaled(bitmap, maxWidth, Math.round(bitmap.height * scale));
+    const smaller = await canvasToBlob(canvas, 'image/jpeg', 0.9);
+    return smaller.size < blob.size ? smaller : blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
 // Phone screenshots (~1080px wide) read best at their own size: downscaling saved under 10% of
 // the time but misread more product names. Only large photos are scaled down, tiny images up.
 export async function prepareForReading(blob, targetWidth = 1280) {
