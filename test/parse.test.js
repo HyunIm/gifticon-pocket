@@ -8,6 +8,14 @@ import { findBrand, guessCategory, makeBrand } from '../dist/js/brands.js';
 // including its real misreadings ("[6525]" for "[GS25]", "(106)" for "(ICE)", "6카드" for "e카드").
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/ocr-lines.json', import.meta.url)));
 const compact = value => value.replace(/\s/g, '');
+function similarity(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  }
+  return 1 - d[a.length][b.length] / Math.max(a.length, b.length, 1);
+}
 
 for (const { sample, truth, lines } of fixtures) {
   test(`reads ${sample}`, () => {
@@ -17,11 +25,8 @@ for (const { sample, truth, lines } of fixtures) {
     assert.equal(got.code.replace(/\D/g, ''), truth.code);
     assert.equal(got.category, truth.category);
     assert.equal(got.balance ?? null, truth.balance ?? null);
-    // OCR may drop a character in long names (e.g. "240ml" -> "24007"); the rest must match.
-    const expected = compact(truth.name);
-    const actual = compact(got.name);
-    const shared = [...expected].filter((c, i) => actual[i] === c).length;
-    assert.ok(shared / expected.length >= 0.75, `name ${got.name} vs ${truth.name}`);
+    // OCR may misread a character in long names ("T" -> "ㅠ"); allow a small edit distance.
+    assert.ok(similarity(compact(got.name), compact(truth.name)) >= 0.8, `name ${got.name} vs ${truth.name}`);
   });
 }
 
@@ -70,6 +75,16 @@ test('brands from the wallet are recognised without a 교환처 label', () => {
   assert.equal(got.brand, '동네빵집 우리밀');
   assert.equal(got.name, '딸기 생크림 케이크');
   assert.equal(got.category, '카페');
+});
+
+test('a product name wrapped onto two lines is joined', () => {
+  const lines = [
+    { text: '스타벅스', h: 37 }, { text: '아이스 카페 아메리카노 T 2잔 + 부드', h: 56 }, { text: '러운 생크림 카스텔라', h: 56 },
+    { text: '9184 0022 3344', h: 38 }, { text: '유효기간 2027.02.14', h: 38 },
+  ];
+  assert.equal(parseGifticon(lines).name, '아이스 카페 아메리카노 T 2잔 + 부드러운 생크림 카스텔라');
+  const atSpace = [{ text: '떠먹는 스트로베리', h: 50 }, { text: '초콜릿 생크림', h: 50 }, { text: '유효기간 2027.02.14', h: 30 }];
+  assert.equal(parseGifticon(atSpace).name, '떠먹는 스트로베리 초콜릿 생크림');
 });
 
 test('nothing recognisable gives empty fields', () => {
