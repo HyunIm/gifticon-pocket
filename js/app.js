@@ -8,7 +8,7 @@ import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing
 import { makeThumbnail, shrinkForStorage } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
 import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
-import { pushState, enablePush, disablePush, sendTestPush, syncReminders } from './push.js';
+import { hasPushBackend, pushState, enablePush, disablePush, sendTestPush, syncReminders } from './push.js';
 import { initShell, canInstall, promptInstall, openInstallGuide } from './install.js';
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -1239,8 +1239,10 @@ async function settings() {
   const backup = el('div', 'settings-block');
   const space = el('div', 'settings-block');
   body.append(
-    section('만료 알림', el('p', 'settings-desc', '만료 3일 전과 만료일 오전 9시에 알려 드려요.'), notify,
-      el('p', 'settings-note', '알림을 보내려고 유효기간과 브랜드·상품명을 서버에 보관해요. 쿠폰 번호와 이미지는 보내지 않아요.')),
+    hasPushBackend ? section('만료 알림', el('p', 'settings-desc', '만료 3일 전과 만료일 오전 9시에 알려 드려요.'), notify,
+      el('p', 'settings-note', '알림을 보내려고 유효기간과 브랜드·상품명을 서버에 보관해요. 쿠폰 번호와 이미지는 보내지 않아요.')) :
+      section('만료 임박', el('p', 'settings-desc', '유효기간이 7일 이내인 기프티콘을 확인할 수 있어요.'),
+        button('만료 임박 보기', 'button-secondary', () => { dialog.close(); setFilter('expiring'); })),
     section('백업', el('p', 'settings-desc', '기기를 바꾸거나 브라우저 데이터를 지우면 쿠폰도 사라져요. 가끔 백업 파일을 저장해 두세요.'), backup),
     section('저장 공간', space),
   );
@@ -1258,6 +1260,7 @@ async function settings() {
   const still = () => currentPage === page;
 
   async function drawNotify() {
+    if (!hasPushBackend) return;
     const state = await pushState();
     if (!still()) return;
     const line = (text, cls = 'settings-status') => el('p', cls, text);
@@ -1413,7 +1416,8 @@ async function importBackup(file) {
 // Files sent from another app's share sheet (Android): the service worker parks them in a cache.
 async function takeSharedFiles() {
   if (!('caches' in window)) return [];
-  const cache = await caches.open('gifticon-pocket-share');
+  const scope = new URL('../', import.meta.url).pathname;
+  const cache = await caches.open('gifticon-pocket-share:' + encodeURIComponent(scope));
   const files = [];
   for (const request of await cache.keys()) {
     const response = await cache.match(request);
@@ -1604,7 +1608,7 @@ async function start() {
     return;
   }
   navigator.serviceWorker?.addEventListener('message', event => {
-    if (event.data?.type === 'open') openFromURL(new URL(event.data.url, location.origin).searchParams);
+    if (event.data?.type === 'open') openFromURL(new URL(event.data.url, location.href).searchParams);
   });
   if (params.has('shared')) {
     const files = await takeSharedFiles().catch(() => []);
