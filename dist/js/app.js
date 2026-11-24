@@ -1,8 +1,9 @@
 import { $, all, el, button, icon, announce } from './dom.js';
 import {
   categories, localDay, daysLeft, statusOf, matchesStatus, badgeLabel, formatDate, formatWon,
-  codeDigits, sortCoupons, summarize, matchesQuery,
+  codeDigits, sortCoupons, summarize, matchesQuery, isUsable,
 } from './coupon.js';
+import { brands, guessCategory } from './brands.js';
 import { openDB, getAll, mutate, putMany, onExternalChange, existing, errorMessage } from './db.js';
 import { makeThumbnail } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
@@ -12,6 +13,7 @@ import { initShell, canInstall, promptInstall, openInstallGuide } from './instal
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const BACKUP_KEY = 'gifticon-pocket:last-backup';
+const VIEW_KEY = 'gifticon-pocket:view';
 const coarsePointer = matchMedia('(pointer: coarse)');
 const store = {
   get: key => { try { return localStorage.getItem(key); } catch { return null; } },
@@ -21,6 +23,8 @@ const store = {
 let ready = false;
 let records = [];
 let filter = 'all';
+// In the 전체 list, used and expired coupons fold away under one row unless opened.
+let showPast = false;
 let generation = 0;
 // Cards are built once per coupon version, so typing in the search box only reorders nodes.
 const cards = new Map();
@@ -80,8 +84,10 @@ function cardFor(record, today) {
 }
 
 function badge(record, today) {
+  const status = statusOf(record, today);
   const node = el('span', 'coupon-badge', badgeLabel(record, today));
-  node.dataset.status = statusOf(record, today);
+  node.dataset.status = status;
+  if (isUsable(status) && daysLeft(record.expiry, today) <= 1) node.dataset.urgent = 'true';
   return node;
 }
 
@@ -110,24 +116,68 @@ function render() {
   const list = $('#coupon-list');
   list.hidden = empty;
   if (empty) list.replaceChildren();
-  else if (!shown.length) list.replaceChildren(noResults());
-  else list.replaceChildren(...shown.map(record => cardFor(record, today)));
+  else if (!shown.length) list.replaceChildren(noResults(query, category));
+  else list.replaceChildren(...withPastFolded(shown, today));
   updateAppBadge(counts.expiring);
+  saveView();
 }
 
-function noResults() {
+// 전체 + 만료 임박순: usable coupons first, then one row that opens the used and expired ones.
+function withPastFolded(shown, today) {
+  const nodes = shown.map(record => cardFor(record, today));
+  if (filter !== 'all' || $('#sort').value !== 'expiry') return nodes;
+  const firstPast = shown.findIndex(record => !isUsable(statusOf(record, today)));
+  if (firstPast <= 0) return nodes;
+  const past = shown.length - firstPast;
+  const toggle = button('', 'past-toggle', () => {
+    showPast = !showPast;
+    render();
+    if (showPast) $('.past-toggle')?.focus({ preventScroll: true });
+  });
+  toggle.setAttribute('aria-expanded', String(showPast));
+  toggle.append(el('span', '', `지난 기프티콘 ${past}개`), el('span', 'past-hint', showPast ? '접기' : '사용 완료·기간 만료 보기'), icon('down'));
+  return [...nodes.slice(0, firstPast), toggle, ...(showPast ? nodes.slice(firstPast) : [])];
+}
+
+const emptyMessages = {
+  all: '조건에 맞는 기프티콘이 없어요',
+  available: '사용할 수 있는 기프티콘이 없어요',
+  expiring: '7일 안에 만료되는 기프티콘이 없어요',
+  used: '사용 완료한 기프티콘이 없어요',
+  expired: '기간이 지난 기프티콘이 없어요',
+};
+
+function noResults(query, category) {
   const box = el('div', 'no-results');
-  box.append(el('h3', '', '조건에 맞는 기프티콘이 없어요'), button('전체 보기', 'button-secondary', () => {
-    $('#search').value = '';
-    $('#category').value = 'all';
-    setFilter('all');
-  }));
+  const searching = query.trim() || category !== 'all';
+  box.append(el('h3', '', query.trim() ? `‘${query.trim()}’에 맞는 기프티콘이 없어요` : emptyMessages[filter]));
+  if (searching || filter !== 'all') {
+    box.append(button(searching ? '검색 조건 지우기' : '전체 보기', 'button-secondary', () => {
+      $('#search').value = '';
+      $('#category').value = 'all';
+      setFilter('all');
+    }));
+  }
   return box;
 }
 
 function setFilter(next) {
   filter = next;
   render();
+}
+
+function saveView() {
+  store.set(VIEW_KEY, JSON.stringify({ filter, sort: $('#sort').value, category: $('#category').value, showPast }));
+}
+
+function restoreView() {
+  try {
+    const view = JSON.parse(store.get(VIEW_KEY) || '{}');
+    if (['all', 'available', 'expiring', 'used', 'expired'].includes(view.filter)) filter = view.filter;
+    if ([...$('#sort').options].some(o => o.value === view.sort)) $('#sort').value = view.sort;
+    if ([...$('#category').options].some(o => o.value === view.category)) $('#category').value = view.category;
+    showPast = view.showPast === true;
+  } catch { /* first visit */ }
 }
 
 function updateAppBadge(count) {
@@ -290,10 +340,36 @@ function showError(message) {
 
 /* ---------- register / edit ---------- */
 
-function field(labelText, input, className) {
+function field(labelText, input, className, hint) {
   const label = el('label', 'field' + (className ? ' ' + className : ''));
   label.append(el('span', '', labelText), input);
+  if (hint) label.append(hint);
   return label;
+}
+
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+// "2026.12.31 (목) · 37일 남음": a quick check that the read or typed date is the right one.
+function expiryHint(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { text: '', warn: false };
+  const days = daysLeft(value);
+  const weekday = WEEKDAYS[new Date(value + 'T00:00:00').getDay()];
+  if (days < 0) return { text: `${weekday}요일 · 이미 지난 날짜예요`, warn: true };
+  if (days === 0) return { text: `${weekday}요일 · 오늘 만료`, warn: true };
+  return { text: `${weekday}요일 · ${days}일 남음`, warn: days > 3660 };
+}
+
+// Known brands plus the ones already in the wallet, for the brand field's suggestions.
+function brandOptions() {
+  let list = $('#brand-options');
+  if (!list) {
+    list = el('datalist');
+    list.id = 'brand-options';
+    document.body.append(list);
+  }
+  const names = [...new Set([...records.map(record => record.brand), ...brands.map(brand => brand.name)])];
+  list.replaceChildren(...names.map(name => new Option(name)));
+  return list.id;
 }
 
 function textInput(name, value, placeholder, maxLength, required = false) {
@@ -380,23 +456,46 @@ function editor(record, { file = null, pick = false } = {}) {
   inputs.category.name = 'category';
   categories.forEach(value => inputs.category.add(new Option(value, value)));
   inputs.category.value = record?.category || '기타';
-  inputs.code.inputMode = 'numeric';
+  // Some codes contain letters (app store cards), so the code field keeps the full keyboard.
+  inputs.code.setAttribute('autocapitalize', 'characters');
+  inputs.code.spellcheck = false;
   inputs.balance.inputMode = 'numeric';
+  inputs.brand.setAttribute('list', brandOptions());
+  const hint = el('span', 'field-hint');
+  hint.setAttribute('aria-live', 'polite');
+  const updateHint = () => {
+    const { text, warn } = expiryHint(inputs.expiry.value);
+    hint.textContent = text;
+    hint.classList.toggle('warn', warn);
+  };
   const grid = el('div', 'form-grid');
   grid.append(
     field('브랜드', inputs.brand, 'wide'), field('상품명', inputs.name, 'wide'),
-    field('유효기간', inputs.expiry), field('카테고리', inputs.category),
+    field('유효기간', inputs.expiry, '', hint), field('카테고리', inputs.category),
     field('쿠폰 번호 (선택)', inputs.code, 'wide'),
     field('잔액 (선택)', inputs.balance), field('메모 (선택)', inputs.memo),
   );
   for (const [key, input] of Object.entries(inputs)) {
-    input.addEventListener('input', () => {
+    input.addEventListener(key === 'category' ? 'change' : 'input', () => {
       page.dirty = true;
       page.touched.add(key);
-      input.classList.remove('autofilled');
+      input.classList.remove('autofilled', 'needs-input');
     });
   }
+  inputs.expiry.addEventListener('input', updateHint);
+  inputs.expiry.addEventListener('change', updateHint);
+  // Picking a known brand picks its category, unless the user chose one.
+  inputs.brand.addEventListener('change', () => {
+    if (page.touched.has('category')) return;
+    const category = guessCategory(inputs.brand.value, inputs.name.value);
+    if (category !== '기타' || !record) inputs.category.value = category;
+  });
+  inputs.balance.addEventListener('blur', () => {
+    const won = parseWon(inputs.balance.value);
+    inputs.balance.value = won == null ? '' : won.toLocaleString('ko-KR');
+  });
   body.append(picker, grid);
+  updateHint();
 
   let image = record?.image || null;
   let changedImage = false;
@@ -407,10 +506,13 @@ function editor(record, { file = null, pick = false } = {}) {
     pickButton.replaceChildren(icon('image'), document.createTextNode(image ? '다른 이미지' : '이미지 선택'));
     removeButton.hidden = !image;
     if (image) {
+      const zoom = button('', 'picker-zoom', () => openViewer(image));
+      zoom.setAttribute('aria-label', '선택한 이미지 크게 보기');
       const img = el('img', 'picker-image');
       img.src = objectURL(image);
-      img.alt = '선택한 기프티콘 이미지';
-      preview.append(img);
+      img.alt = '';
+      zoom.append(img);
+      preview.append(zoom);
     } else {
       const hint = el('p', 'picker-hint');
       hint.append(el('strong', '', '기프티콘 이미지를 선택하세요'),
@@ -453,9 +555,12 @@ function editor(record, { file = null, pick = false } = {}) {
         input.value = key === 'balance' ? Number(value).toLocaleString('ko-KR') : value;
         page.autofilled.add(key);
         input.classList.add('autofilled');
+        input.classList.remove('needs-input');
         if (key !== 'category') filled++;
       }
+      updateHint();
       const missing = ['brand', 'name', 'expiry'].filter(key => !inputs[key].value);
+      missing.forEach(key => inputs[key].classList.add('needs-input'));
       const duplicate = fields.code && records.find(item => item.id !== id && codeDigits(item.code) === codeDigits(fields.code));
       status.className = 'read-status ' + (filled ? 'done' : 'empty');
       status.textContent = filled
@@ -604,7 +709,7 @@ function details(id) {
 
   if (record.image) {
     const figure = el('figure', 'detail-figure');
-    const open = button('', 'detail-image-button', () => openViewer(record.image));
+    const open = button('', 'detail-image-button', () => openViewer(record.image, record));
     open.setAttribute('aria-label', '이미지 크게 보기');
     const img = el('img', 'detail-image');
     img.src = objectURL(record.image);
@@ -620,10 +725,7 @@ function details(id) {
   actions.append(
     button('삭제', 'button-danger', () => confirmDelete(record)),
     button('수정', 'button-secondary', () => editor(record)),
-    button(record.used ? '사용 취소' : '사용 완료', 'button-primary', () => {
-      writeFromDialog(id, old => ({ ...existing(old), used: !record.used, updatedAt: Date.now() }),
-        record.used ? '사용 처리를 취소했어요.' : '사용 완료로 표시했어요.', () => dialog.close());
-    }),
+    button(record.used ? '사용 취소' : '사용 완료', 'button-primary', () => markUsed(record, !record.used)),
   );
   shell.append(body, actions);
   showDialog();
@@ -634,15 +736,42 @@ function details(id) {
   }
 }
 
-function openViewer(blob) {
-  const url = objectURL(blob);
+async function markUsed(record, used) {
+  const done = await writeFromDialog(record.id, old => ({ ...existing(old), used, updatedAt: Date.now() }), null, () => dialog.close());
+  if (!done) return;
+  if (used) navigator.vibrate?.(30);
+  announce(used ? `‘${record.name}’ 사용 완료` : '사용 처리를 취소했어요.', {
+    label: '실행 취소',
+    run: () => mutate(record.id, old => ({ ...existing(old), used: !used, updatedAt: Date.now() }))
+      .then(refresh).catch(error => announce(errorMessage(error))),
+  });
+}
+
+// Full-screen coupon for the counter. With a record, the bottom bar shows the number and lets
+// the user mark it used right there, without going back to the details sheet.
+function openViewer(blob, record) {
   const img = el('img', 'viewer-image');
-  img.src = url;
+  img.src = objectURL(blob);
   img.alt = '기프티콘 원본';
   const close = button('', 'icon-button viewer-close', () => viewer.close());
   close.append(icon('close'));
   close.setAttribute('aria-label', '닫기');
   viewer.replaceChildren(close, img);
+  viewer.classList.toggle('has-bar', Boolean(record));
+  if (record) {
+    const bar = el('div', 'viewer-bar');
+    const info = el('div', 'viewer-info');
+    info.append(el('strong', '', record.name));
+    if (record.code) info.append(el('span', 'coupon-code', record.code));
+    bar.append(info);
+    if (isUsable(statusOf(record))) {
+      bar.append(button('사용 완료', 'button-primary', () => {
+        viewer.close();
+        markUsed(record, true);
+      }));
+    }
+    viewer.append(bar);
+  }
   viewer.showModal();
 }
 
@@ -867,7 +996,16 @@ function wireEvents() {
     keepAwake(false);
     restoreFocus();
   });
-  viewer.addEventListener('click', event => { if (event.target === viewer || event.target.tagName === 'IMG') viewer.close(); });
+  viewer.addEventListener('click', event => { if (event.target === viewer) viewer.close(); });
+  // Tapping the dimmed area closes a sheet; a drag that started inside it (selecting text) does not.
+  for (const sheet of [dialog, $('#install-guide')]) {
+    let pressedOutside = false;
+    sheet.addEventListener('pointerdown', event => { pressedOutside = event.target === sheet; });
+    sheet.addEventListener('click', event => {
+      if (event.target !== sheet || !pressedOutside) return;
+      if (sheet === dialog) requestClose(); else sheet.close();
+    });
+  }
   document.addEventListener('click', event => {
     const target = event.target.closest('[data-action="add"], [data-filter]');
     if (!target) return;
@@ -880,6 +1018,9 @@ function wireEvents() {
   $('#search').addEventListener('input', render);
   $('#category').addEventListener('change', render);
   $('#sort').addEventListener('change', render);
+  $('#search').addEventListener('keydown', event => {
+    if (event.key === 'Escape' && event.target.value) { event.target.value = ''; render(); }
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     if (currentPage?.awake) keepAwake(true);
@@ -914,6 +1055,7 @@ function wireEvents() {
 async function start() {
   wireEvents();
   initShell({ isBusy: () => Boolean(currentPage?.dirty || currentPage?.busy) });
+  restoreView();
   const params = new URLSearchParams(location.search);
   const requested = params.get('filter');
   if (['available', 'expiring', 'used', 'expired'].includes(requested)) filter = requested;

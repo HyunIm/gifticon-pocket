@@ -24,9 +24,12 @@ export function statusOf(record, today = localDay()) {
 export const matchesStatus = (filter, status) =>
   filter === 'all' || status === filter || (filter === 'available' && status === 'expiring');
 
+export const isUsable = status => status === 'available' || status === 'expiring';
+
+// Usable coupons show how many days are left; the rest show their state.
 export function badgeLabel(record, today = localDay()) {
   const status = statusOf(record, today);
-  if (status !== 'expiring') return statuses[status];
+  if (!isUsable(status)) return statuses[status];
   const days = daysLeft(record.expiry, today);
   return days === 0 ? '오늘 만료' : 'D-' + days;
 }
@@ -55,6 +58,25 @@ export function summarize(records, today = localDay()) {
   return counts;
 }
 
+const CHOSEONG = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const initialOf = char => {
+  const code = char.charCodeAt(0) - 0xac00;
+  return code >= 0 && code < 11172 ? CHOSEONG[Math.floor(code / 588)] : char;
+};
+
+// Brand, name, category, memo and coupon number, ignoring spaces and case. A query may use
+// initial consonants for any syllable: "ㅅㅌㅂㅅ" and "스ㅌ" both find "스타벅스".
 export function matchesQuery(record, query) {
-  return normalize([record.brand, record.name, record.category, record.memo || ''].join(' ')).includes(normalize(query));
+  const needle = [...normalize(query)];
+  if (!needle.length) return true;
+  const hay = [...normalize([record.brand, record.name, record.category, record.memo || '', codeDigits(record.code)].join(' '))];
+  outer: for (let start = 0; start + needle.length <= hay.length; start++) {
+    for (let i = 0; i < needle.length; i++) {
+      const q = needle[i];
+      const t = hay[start + i];
+      if (q !== t && !(CHOSEONG.includes(q) && initialOf(t) === q)) continue outer;
+    }
+    return true;
+  }
+  return false;
 }

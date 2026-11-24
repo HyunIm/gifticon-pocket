@@ -20,6 +20,8 @@ test('days left and status', () => {
   assert.equal(statusOf(coupon('2026-11-01', { used: true }), today), 'used');
   assert.equal(badgeLabel(coupon('2026-11-24'), today), '오늘 만료');
   assert.equal(badgeLabel(coupon('2026-11-27'), today), 'D-3');
+  assert.equal(badgeLabel(coupon('2027-01-03'), today), 'D-40', 'usable coupons always show days left');
+  assert.equal(badgeLabel(coupon('2026-11-20'), today), '기간 만료');
 });
 
 test('expiry sort puts usable coupons first, then expired, then used', () => {
@@ -32,9 +34,19 @@ test('summary counts expiring coupons as available too', () => {
   assert.deepEqual(counts, { all: 4, available: 2, expiring: 1, used: 1, expired: 1 });
 });
 
-test('search matches brand, name, category and memo ignoring spaces', () => {
-  const record = { brand: '스타벅스', name: '아이스 아메리카노', category: '카페', memo: '생일 선물' };
+test('search matches brand, name, category, memo and code ignoring spaces', () => {
+  const record = { brand: '스타벅스', name: '아이스 아메리카노', category: '카페', memo: '생일 선물', code: '9184 2735 6610' };
   assert.ok(matchesQuery(record, '아이스아메'));
   assert.ok(matchesQuery(record, '생일'));
+  assert.ok(matchesQuery(record, '27356'), 'coupon number without spaces');
   assert.ok(!matchesQuery(record, '투썸'));
+  assert.ok(matchesQuery(record, ''));
+});
+
+test('initial consonant search', () => {
+  const record = { brand: '스타벅스', name: '아이스 아메리카노', category: '카페' };
+  assert.ok(matchesQuery(record, 'ㅅㅌㅂㅅ'));
+  assert.ok(matchesQuery(record, '스ㅌ'));
+  assert.ok(matchesQuery(record, 'ㅇㅁㄹㅋㄴ'));
+  assert.ok(!matchesQuery(record, 'ㅌㅆ'));
 });
