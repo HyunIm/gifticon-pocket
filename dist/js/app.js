@@ -1492,6 +1492,8 @@ function enableSwipeToClose() {
 
 function wireEvents() {
   document.body.append(dialog, viewer, askDialog);
+  // iOS Safari only applies :active (pressed look) when a touch listener exists.
+  document.addEventListener('touchstart', () => {}, { passive: true });
   dialog.addEventListener('cancel', event => {
     // A file picker closed without a choice fires a bubbling "cancel" on its <input>; only the
     // sheet's own cancel (Esc, back gesture) means "close".

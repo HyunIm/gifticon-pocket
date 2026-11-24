@@ -30,6 +30,10 @@ html{overflow-anchor:none}
 body{margin:0;line-height:1.5;background:var(--bg);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 button,input,select,textarea{font:inherit;color:inherit}
 button,select{cursor:pointer}
+/* No double-tap zoom on controls (and no 300ms wait for it). */
+button,a,input,select,label{touch-action:manipulation}
+/* While a sheet is open the list behind it stays put (iOS would otherwise scroll it). */
+html:has(dialog[open]:modal){overflow:hidden}
 button{border:0;background:none;-webkit-tap-highlight-color:transparent}
 button:hover{filter:brightness(.965)}
 button:active{transform:translateY(1px)}
@@ -113,7 +117,8 @@ main.wrap{padding-top:32px}
 
 /* list */
 #coupon-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.coupon-card{background:var(--surface);border:1px solid var(--edge);border-radius:16px;display:flex;gap:15px;align-items:center;text-align:left;padding:15px;min-width:0}
+.coupon-card{background:var(--surface);border:1px solid var(--edge);border-radius:16px;display:flex;gap:15px;align-items:center;text-align:left;padding:15px;min-width:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.coupon-card:active{background:var(--tint)}
 .coupon-image{display:grid;place-items:center;width:72px;height:75px;flex-shrink:0;border-radius:11px;background:var(--lilac-bg);font-size:1.6rem;font-weight:700;color:var(--lilac-fg);overflow:hidden}
 .coupon-image img{width:100%;height:100%;object-fit:cover;object-position:center 15%}
 .coupon-info{display:grid;gap:2px;min-width:0}
