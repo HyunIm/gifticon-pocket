@@ -25,7 +25,8 @@ export function icon(id) {
 }
 
 // A dismissible notice above the list. actions: [label, run(banner), primary?]
-export function showBanner(id, message, actions, { tone } = {}) {
+// first: put it above the other banners (for what matters today).
+export function showBanner(id, message, actions, { tone, first = false } = {}) {
   const host = $('#banners');
   host.querySelector(`[data-banner="${id}"]`)?.remove();
   const banner = el('div', 'banner' + (tone ? ' banner-' + tone : ''));
@@ -36,7 +37,7 @@ export function showBanner(id, message, actions, { tone } = {}) {
     row.append(button(label, primary ? 'banner-primary' : 'banner-secondary', () => run(banner)));
   }
   banner.append(row);
-  host.append(banner);
+  if (first) host.prepend(banner); else host.append(banner);
   return banner;
 }
 
