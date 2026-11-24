@@ -42,6 +42,16 @@ const table = [
   ['하겐다즈', '카페', 'HAAGENDAZS'],
   ['디저트39', '카페'],
   ['와플대학', '카페'],
+  ['파리크라상', '카페'],
+  ['커피에반하다', '카페'],
+  ['카페봄봄', '카페'],
+  ['더리터', '카페'],
+  ['그라찌에', '카페'],
+  ['커피명가', '카페'],
+  ['디초콜릿커피', '카페'],
+  ['요아정', '카페', '요거트아이스크림의정석'],
+  ['아마스빈', '카페'],
+  ['팔공티', '카페'],
   // 외식
   ['BBQ', '외식', '비비큐', 'BBQ치킨'],
   ['BHC', '외식', '비에이치씨', 'BHC치킨'],
@@ -90,6 +100,17 @@ const table = [
   ['쿠우쿠우', '외식'],
   ['매드포갈릭', '외식', 'MADFORGARLIC'],
   ['샐러디', '외식', 'SALADY'],
+  ['바른치킨', '외식'],
+  ['깐부치킨', '외식'],
+  ['땅땅치킨', '외식'],
+  ['치킨플러스', '외식'],
+  ['바르다김선생', '외식'],
+  ['고봉민김밥', '외식'],
+  ['김가네', '외식'],
+  ['죠스떡볶이', '외식'],
+  ['본도시락', '외식'],
+  ['피자마루', '외식'],
+  ['파파이스', '외식', 'POPEYES'],
   // 편의점
   ['GS25', '편의점', '지에스25'],
   ['CU', '편의점', '씨유'],
@@ -117,6 +138,19 @@ const table = [
   ['아리따움', '쇼핑'],
   ['코스트코', '쇼핑', 'COSTCO'],
   ['하이마트', '쇼핑'],
+  ['GS더프레시', '쇼핑', 'GSTHEFRESH'],
+  ['롯데슈퍼', '쇼핑'],
+  ['이마트에브리데이', '쇼핑'],
+  ['마켓컬리', '쇼핑', 'KURLY'],
+  ['29CM', '쇼핑'],
+  ['에이블리', '쇼핑'],
+  ['지그재그', '쇼핑'],
+  ['탑텐', '쇼핑', 'TOPTEN'],
+  ['유니클로', '쇼핑', 'UNIQLO'],
+  ['ABC마트', '쇼핑'],
+  ['나이키', '쇼핑', 'NIKE'],
+  ['아디다스', '쇼핑', 'ADIDAS'],
+  ['시코르', '쇼핑', 'CHICOR'],
   // 기타
   ['CGV', '기타'],
   ['메가박스', '기타', 'MEGABOX'],
@@ -129,6 +163,14 @@ const table = [
   ['쿠팡이츠', '기타'],
   ['에버랜드', '기타'],
   ['롯데월드', '기타'],
+  ['네이버페이', '기타'],
+  ['북앤라이프', '기타'],
+  ['도서문화상품권', '기타'],
+  ['티머니', '기타', 'TMONEY'],
+  ['넥슨캐시', '기타'],
+  ['앱스토어', '기타', 'APPSTORE', '애플기프트카드'],
+  ['넷플릭스', '기타', 'NETFLIX'],
+  ['왓챠', '기타', 'WATCHA'],
 ];
 
 const compact = text => text.normalize('NFKC').toUpperCase().replace(/[\s·.\-_'’&]/g, '');
@@ -146,8 +188,11 @@ export const makeBrand = (name, category, aliases = []) => ({
     key,
   })),
   // OCR garbles the Latin part of mixed names ("메가MGC커피" -> "메가46(커피"); the Hangul part survives.
-  skeleton: /[A-Z]/i.test(name) && hangulOnly(name).length >= 2 ? hangulOnly(name) : '',
+  skeleton: /[A-Z]/i.test(name) && hangulOnly(name).length >= 3 ? hangulOnly(name) : '',
 });
+
+// True when text is exactly the brand's name or one of its aliases ("교촌", "메가 MGC커피").
+export const isBrandText = (text, brand) => brand.matchers.some(matcher => matcher.key === compact(text));
 
 export const brands = table.map(([name, category, ...aliases]) => makeBrand(name, category, aliases));
 
