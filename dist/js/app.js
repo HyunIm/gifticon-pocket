@@ -634,6 +634,26 @@ function editor(record, { file = null, pick = false } = {}) {
   };
   picker.append(preview, el('div', 'picker-actions'), status, autoButton, upload);
   picker.querySelector('.picker-actions').append(pickButton, removeButton);
+  // iPhone has no share target: copying the image in KakaoTalk and pasting here skips Photos.
+  if (navigator.clipboard?.read) {
+    const paste = button('', 'button-ghost', async () => {
+      try {
+        for (const item of await navigator.clipboard.read()) {
+          const type = item.types.find(t => IMAGE_TYPES.includes(t));
+          if (!type) continue;
+          setImage(new File([await item.getType(type)], 'clipboard.' + type.split('/')[1], { type }));
+          return;
+        }
+        status.className = 'read-status empty';
+        status.textContent = '복사한 이미지가 없어요. 카카오톡 등에서 이미지를 길게 눌러 복사한 뒤 다시 눌러 주세요.';
+      } catch {
+        status.className = 'read-status empty';
+        status.textContent = '클립보드를 읽지 못했어요. 이미지를 복사한 뒤 다시 시도해 주세요.';
+      }
+    });
+    paste.append(icon('clipboard'), document.createTextNode('붙여넣기'));
+    picker.querySelector('.picker-actions').append(paste);
+  }
 
   const inputs = {
     brand: textInput('brand', record?.brand, '예) 스타벅스', 80, true),
