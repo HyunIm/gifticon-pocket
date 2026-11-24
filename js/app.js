@@ -1503,6 +1503,17 @@ function importTip() {
   }
 }
 
+// Reminder links: ?coupon=<id> opens that coupon, ?filter=… shows a list.
+function openFromURL(params) {
+  if (params.has('coupon')) {
+    if (currentPage?.dirty || currentPage?.busy) return;
+    if (records.some(record => record.id === params.get('coupon'))) details(params.get('coupon'));
+    else announce('알림의 기프티콘을 찾지 못했어요. 이미 삭제했을 수 있어요.');
+  } else if (['available', 'expiring', 'used', 'expired'].includes(params.get('filter'))) {
+    setFilter(params.get('filter'));
+  }
+}
+
 async function start() {
   wireEvents();
   importTip();
@@ -1525,16 +1536,17 @@ async function start() {
     announce(errorMessage(error));
     return;
   }
+  navigator.serviceWorker?.addEventListener('message', event => {
+    if (event.data?.type === 'open') openFromURL(new URL(event.data.url, location.origin).searchParams);
+  });
   if (params.has('shared')) {
     const files = await takeSharedFiles().catch(() => []);
     if (files.length) startImport(files);
     else announce('공유한 이미지를 찾지 못했어요. 다시 공유해 주세요.');
   } else if (params.get('action') === 'add') {
     editor(null);
-  } else if (params.has('coupon')) {
-    // Opened from a single-coupon reminder.
-    if (records.some(record => record.id === params.get('coupon'))) details(params.get('coupon'));
-    else announce('알림의 기프티콘을 찾지 못했어요. 이미 삭제했을 수 있어요.');
+  } else {
+    openFromURL(params);
   }
   if (location.search) history.replaceState(null, '', location.pathname);
 }
