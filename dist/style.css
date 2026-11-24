@@ -192,6 +192,10 @@ footer svg{width:15px;height:15px}
 .zoom-hint{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;gap:5px;background:#302b38d9;color:#fff;font-size:.8rem;font-weight:700;padding:6px 10px;border-radius:999px}
 .zoom-hint svg{width:15px;height:15px}
 
+.figure-actions{display:flex;justify-content:flex-end;margin-top:8px}
+.spend-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.spend-form input{width:120px;min-height:34px;border:1px solid var(--edge-strong);border-radius:8px;padding:4px 8px;background:var(--surface);font-size:1rem}
+
 /* full-screen coupon: always white, for the scanner */
 .viewer{width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#fff;color:#1d1a22;color-scheme:light;overflow:auto;overscroll-behavior:contain}
 .viewer-image{display:block;width:100%;max-width:760px;height:auto;margin:0 auto;padding:calc(56px + env(safe-area-inset-top,0px)) 0 calc(24px + env(safe-area-inset-bottom,0px))}

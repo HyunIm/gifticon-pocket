@@ -67,6 +67,16 @@ export function putMany(records) {
   });
 }
 
+export function deleteMany(ids) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    ids.forEach(id => store.delete(id));
+    tx.oncomplete = () => { channel?.postMessage('*'); resolve(); };
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 export function onExternalChange(listener) {
   if (channel) channel.onmessage = listener;
 }
