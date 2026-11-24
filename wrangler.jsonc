@@ -1,5 +1,6 @@
 {
   "name": "gifticon-pocket",
   "compatibility_date": "2026-06-01",
+  "build": { "command": "node scripts/refresh-offline-cache.mjs" },
   "assets": { "directory": "./dist" }
 }

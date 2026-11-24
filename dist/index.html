@@ -1,16 +1,24 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#faf9f6"><meta name="description" content="기프티콘 이미지와 쿠폰 번호를 보관하고 유효기간을 관리하는 나만의 기프티콘 포켓">
   <title>내 보관함 · 기프티콘 포켓</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="기프티콘 포켓">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" href="pocket.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
+  <script src="/install.js" defer></script>
 </head>
 <body>
   <svg class="defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="install" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></symbol>
       <symbol id="ticket" viewBox="0 0 24 24"><path d="M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4zM15 6v2m0 3v2m0 3v2"/></symbol>
       <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></symbol>
       <symbol id="check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8 12 2.5 2.5 5.5-6"/></symbol>
@@ -22,8 +30,10 @@
   </svg>
   <header class="site-header"><div class="wrap head-inner">
     <a class="brand" href="./"><img src="pocket.svg" alt="" width="36" height="36">기프티콘 포켓</a>
-    <button type="button" data-action="add" class="header-add"><svg><use href="#plus"/></svg>기프티콘 등록</button>
+    <button type="button" id="install-button" class="header-add" hidden><svg aria-hidden="true"><use href="#install"/></svg>앱 설치</button>
+    <button type="button" id="header-register" data-action="add" class="header-add"><svg><use href="#plus"/></svg>기프티콘 등록</button>
   </div></header>
+  <div class="connection-status" role="status"><span id="offline-notice" hidden>오프라인으로 사용 중이에요.</span></div>
   <main class="wrap">
     <section class="hero">
       <div class="hero-copy">
@@ -55,5 +65,12 @@
       </div>
     </section>
   </main>
-  <footer class="wrap"><svg><use href="#lock"/></svg>기프티콘은 이 브라우저에 저장돼요.</footer>
+  <footer class="wrap"><svg><use href="#lock"/></svg>기프티콘은 이 기기에 저장돼요.</footer>
+  <dialog id="install-guide" class="coupon-dialog" aria-labelledby="install-title">
+    <div class="dialog-shell">
+      <div class="dialog-header"><h2 id="install-title">기프티콘 포켓 설치</h2><form method="dialog"><button class="icon-button" aria-label="닫기">×</button></form></div>
+      <img class="install-icon" src="/icons/icon-192.png" alt="" width="66" height="66">
+      <ol id="install-steps" class="install-steps"></ol>
+    </div>
+  </dialog>
 </body></html>
