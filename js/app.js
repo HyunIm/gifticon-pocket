@@ -1,4 +1,4 @@
-import { $, all, el, button, icon, announce, showBanner, removeBanner } from './dom.js';
+import { $, all, el, button, icon, announce, placeToast, showBanner, removeBanner } from './dom.js';
 import {
   categories, localDay, daysLeft, statusOf, matchesStatus, badgeLabel, formatDate, formatWon,
   codeDigits, sortCoupons, summarize, matchesQuery, isUsable,
@@ -380,6 +380,7 @@ function openDialog(title, page) {
   head.append(heading, close);
   shell.append(head);
   dialog.replaceChildren(shell);
+  placeToast();
   return shell;
 }
 
@@ -985,7 +986,13 @@ function details(id) {
   };
   const days = daysLeft(record.expiry, today);
   const remaining = record.used ? '' : days > 0 ? ` (${days}일 남음)` : days === 0 ? ' (오늘까지)' : ' (만료)';
-  row('유효기간', formatDate(record.expiry) + '까지' + remaining);
+  const expiryRow = el('span', 'code-row');
+  expiryRow.append(el('span', '', formatDate(record.expiry) + '까지' + remaining));
+  // Many gift coupons can be extended in the store app; record the new date right here.
+  if (!record.used && (status === 'expired' || status === 'expiring')) {
+    expiryRow.append(button('연장했어요', 'copy-button', () => extendForm(record, expiryRow)));
+  }
+  row('유효기간', expiryRow);
   if (record.balance != null) {
     const balanceRow = el('span', 'code-row');
     balanceRow.append(el('span', '', formatWon(record.balance)));
@@ -1049,6 +1056,31 @@ function details(id) {
     page.awake = true;
     keepAwake(true);
   }
+}
+
+function extendForm(record, host) {
+  const form = el('form', 'spend-form');
+  const input = el('input');
+  Object.assign(input, { type: 'date', value: record.expiry, min: record.expiry, required: true });
+  input.setAttribute('aria-label', '새 유효기간');
+  const submit = el('button', 'copy-button', '저장');
+  submit.type = 'submit';
+  form.append(input, submit, button('취소', 'copy-button', () => details(record.id)));
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!input.value || input.value <= record.expiry) { input.focus(); return; }
+    const expiry = input.value;
+    const previous = record.expiry;
+    const done = await writeFromDialog(record.id, old => ({ ...existing(old), expiry, updatedAt: Date.now() }), null, () => details(record.id));
+    if (!done) return;
+    announce(`유효기간을 ${formatDate(expiry)}까지로 바꿨어요.`, {
+      label: '실행 취소',
+      run: () => mutate(record.id, old => ({ ...existing(old), expiry: previous, updatedAt: Date.now() }))
+        .then(refresh).catch(error => announce(errorMessage(error))),
+    });
+  });
+  host.replaceChildren(form);
+  input.focus();
 }
 
 // Gift cards (금액권) are spent in parts: subtract what was used, and finish it at zero.
@@ -1419,7 +1451,10 @@ function wireEvents() {
     queue.files = [];
   });
   enableSwipeToClose();
+  // A toast inside a sheet that closes moves out with it, still showing.
+  for (const sheet of [viewer, askDialog]) sheet.addEventListener('close', () => placeToast());
   dialog.addEventListener('close', () => {
+    placeToast();
     dialog.style.transform = '';
     dialog.style.transition = '';
     currentPage = null;
