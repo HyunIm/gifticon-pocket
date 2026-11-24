@@ -135,7 +135,8 @@ const compact = text => text.normalize('NFKC').toUpperCase().replace(/[\s·.\-_'
 const hangulOnly = text => text.replace(/[^가-힣]/g, '');
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export const brands = table.map(([name, category, ...aliases]) => ({
+// Also used for brands the user registered that are not in the table above.
+export const makeBrand = (name, category, aliases = []) => ({
   name,
   category,
   matchers: [...new Set([name, ...aliases].map(compact))].map(key => ({
@@ -146,7 +147,9 @@ export const brands = table.map(([name, category, ...aliases]) => ({
   })),
   // OCR garbles the Latin part of mixed names ("메가MGC커피" -> "메가46(커피"); the Hangul part survives.
   skeleton: /[A-Z]/i.test(name) && hangulOnly(name).length >= 2 ? hangulOnly(name) : '',
-}));
+});
+
+export const brands = table.map(([name, category, ...aliases]) => makeBrand(name, category, aliases));
 
 // Misreadings of Latin brand names seen with Tesseract. Only applied to short labelled values,
 // because the same characters appear inside coupon numbers.
@@ -157,13 +160,14 @@ const confusions = [
 
 // Returns the brand with the longest name or alias mentioned in text, or null.
 // loose: text is a short labelled value (교환처, [brand] prefix), so known misreadings are accepted.
-export function findBrand(text, { loose = false } = {}) {
+// extra: more brands to consider (made with makeBrand), e.g. the ones already in the wallet.
+export function findBrand(text, { loose = false, extra = [] } = {}) {
   const upper = text.normalize('NFKC').toUpperCase();
   const flat = compact(text);
   const skeleton = hangulOnly(text);
   let best = null;
   let bestScore = 0;
-  for (const brand of brands) {
+  for (const brand of extra.length ? [...brands, ...extra] : brands) {
     for (const { key, pattern, length } of brand.matchers) {
       const hit = pattern ? pattern.test(upper) : flat.includes(key);
       if (hit && length > bestScore) { best = brand; bestScore = length; }
@@ -188,8 +192,8 @@ const categoryWords = [
   ['쇼핑', /백화점|기프트카드|마트/],
 ];
 
-export function guessCategory(brand, name) {
-  const known = brand && findBrand(brand, { loose: true });
+export function guessCategory(brand, name, extra = []) {
+  const known = brand && findBrand(brand, { loose: true, extra });
   if (known) return known.category;
   for (const [category, pattern] of categoryWords) if (pattern.test(name || '')) return category;
   return '기타';

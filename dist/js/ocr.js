@@ -89,7 +89,7 @@ async function readBarcode(canvas) {
 export class ReadError extends Error {}
 
 // Returns { brand, name, expiry, code, balance, category } with empty strings for what was not found.
-export async function readGifticon(blob, onProgress = () => {}, { targetWidth } = {}) {
+export async function readGifticon(blob, onProgress = () => {}, { targetWidth, extraBrands } = {}) {
   clearTimeout(idleTimer);
   reading++;
   report = value => onProgress(Math.min(1, Math.max(0, value)));
@@ -111,7 +111,7 @@ export async function readGifticon(blob, onProgress = () => {}, { targetWidth } 
     for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
       lines.push({ text: line.text.trim(), h: line.bbox.y1 - line.bbox.y0, y: line.bbox.y0, conf: line.confidence });
     }
-    const fields = parseGifticon(lines);
+    const fields = parseGifticon(lines, { extraBrands });
     if (barcode) fields.code = barcode.replace(/(\d{4})(?=\d)/g, '$1 ');
     onProgress(1);
     return fields;

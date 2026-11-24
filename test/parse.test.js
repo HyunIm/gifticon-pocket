@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parseGifticon, findDates, cleanLine } from '../dist/js/parse.js';
-import { findBrand, guessCategory } from '../dist/js/brands.js';
+import { findBrand, guessCategory, makeBrand } from '../dist/js/brands.js';
 
 // Lines Tesseract (kor+eng, PSM 4) produced for rendered gifticons of common layouts,
 // including its real misreadings ("[6525]" for "[GS25]", "(106)" for "(ICE)", "6카드" for "e카드").
@@ -59,6 +59,15 @@ test('brand matching', () => {
   assert.equal(findBrand('6525', { loose: true })?.name, 'GS25');
   assert.equal(findBrand('이마트24 상품권')?.name, '이마트24');
   assert.equal(guessCategory('', '치즈 피자 L'), '외식');
+});
+
+test('brands from the wallet are recognised without a 교환처 label', () => {
+  const lines = ['파리크라상', '딸기 생크림 케이크', '1234 5678 9012', '유효기간 2027.03.01'];
+  assert.equal(parseGifticon(lines).brand, '', 'unknown to the built-in list');
+  const got = parseGifticon(lines, { extraBrands: [makeBrand('파리크라상', '카페')] });
+  assert.equal(got.brand, '파리크라상');
+  assert.equal(got.name, '딸기 생크림 케이크');
+  assert.equal(got.category, '카페');
 });
 
 test('nothing recognisable gives empty fields', () => {

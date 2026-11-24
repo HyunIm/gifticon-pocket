@@ -3,7 +3,7 @@ import {
   categories, localDay, daysLeft, statusOf, matchesStatus, badgeLabel, formatDate, formatWon,
   codeDigits, sortCoupons, summarize, matchesQuery, isUsable,
 } from './coupon.js';
-import { brands, guessCategory } from './brands.js';
+import { brands, guessCategory, findBrand, makeBrand } from './brands.js';
 import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing, errorMessage } from './db.js';
 import { makeThumbnail } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
@@ -476,6 +476,19 @@ const parseWon = value => {
   return digits ? Number(digits) : null;
 };
 
+// Brands already in the wallet that the built-in list does not know, so the next coupon from
+// the same shop is recognised too. The latest coupon of each brand decides its category.
+function walletBrands() {
+  const seen = new Map();
+  for (const record of [...records].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))) {
+    const name = record.brand?.trim();
+    if (!name || seen.has(name) || findBrand(name)) continue;
+    if (!/[가-힣]{2}|[A-Za-z]{3}/.test(name)) continue;
+    seen.set(name, makeBrand(name, record.category));
+  }
+  return [...seen.values()];
+}
+
 function startImport(files) {
   const images = [...files].filter(file => IMAGE_TYPES.includes(file.type));
   if (!images.length) {
@@ -674,7 +687,7 @@ function editor(record, { file = null, pick = false } = {}) {
         status.textContent = progress < 0.3
           ? (firstTime ? '처음 한 번 읽기 도구를 내려받고 있어요(약 7MB)…' : '읽기 도구를 준비하고 있어요…')
           : `이미지를 읽고 있어요… ${Math.round(progress * 100)}%`;
-      });
+      }, { extraBrands: walletBrands() });
       store.set(OCR_READY_KEY, '1');
       if (!still()) return;
       let filled = 0;
@@ -799,6 +812,7 @@ async function autoRegisterRest(draft) {
   const files = queue.files.splice(0);
   const review = [];
   const codes = new Set(records.map(record => codeDigits(record.code)).filter(Boolean));
+  const extraBrands = walletBrands();
   let saved = 0;
   const page = { kind: 'auto', busy: true, stop: false };
   const shell = openDialog('자동 등록', page);
@@ -834,7 +848,7 @@ async function autoRegisterRest(draft) {
       if (page.stop) { review.push(...files.slice(i)); break; }
       label.textContent = `자동 등록 중… ${i + 1}/${files.length}`;
       try {
-        const found = await readGifticon(file);
+        const found = await readGifticon(file, undefined, { extraBrands });
         const duplicate = found.code && codes.has(codeDigits(found.code));
         if (found.brand && found.name && found.expiry && !duplicate) {
           await save(file, { brand: found.brand, name: found.name, expiry: found.expiry, category: found.category, code: found.code, balance: found.balance });
