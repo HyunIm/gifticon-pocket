@@ -376,11 +376,37 @@ function showDialog() {
   dialog.scrollTop = 0;
 }
 
-function requestClose() {
-  if (!currentPage || currentPage.busy) return;
-  if (currentPage.confirmClose && !currentPage.confirmClose()) return;
+async function requestClose() {
+  const page = currentPage;
+  if (!page || page.busy) return;
+  if (page.confirmClose && !(await page.confirmClose())) return;
+  if (currentPage !== page) return;
   queue.files = [];
   dialog.close();
+}
+
+// In-app replacement for confirm(): a small sheet above whatever is open. Resolves true/false.
+const askDialog = el('dialog', 'coupon-dialog ask-dialog');
+askDialog.setAttribute('aria-labelledby', 'ask-message');
+function ask(message, { yes = '확인', no = '취소', danger = false } = {}) {
+  if (askDialog.open) askDialog.close();
+  return new Promise(resolve => {
+    const text = el('p', 'ask-message', message);
+    text.id = 'ask-message';
+    const finish = answer => {
+      askDialog.onclose = null;
+      askDialog.close();
+      resolve(answer);
+    };
+    const actions = el('div', 'ask-actions');
+    actions.append(button(no, 'button-secondary', () => finish(false)), button(yes, danger ? 'button-danger' : 'button-primary', () => finish(true)));
+    const shell = el('div', 'dialog-shell');
+    shell.append(text, actions);
+    askDialog.replaceChildren(shell);
+    askDialog.onclose = () => resolve(false);
+    askDialog.showModal();
+    actions.lastChild.focus();
+  });
 }
 
 function clearDialogURLs() {
@@ -558,7 +584,7 @@ function editor(record, { file = null, pick = false } = {}) {
     const parts = [];
     if (page.dirty) parts.push('작성 중인 내용이 저장되지 않아요.');
     if (queue.files.length) parts.push(`남은 이미지 ${queue.files.length}장도 등록하지 않아요.`);
-    return !parts.length || confirm(parts.join(' ') + ' 닫을까요?');
+    return !parts.length || ask(parts.join(' ') + ' 닫을까요?', { yes: '닫기', no: '계속 작성', danger: true });
   };
   const shell = openDialog(title, page);
   const form = el('form', 'editor-form');
@@ -790,7 +816,11 @@ function editor(record, { file = null, pick = false } = {}) {
   const secondary = button('', 'button-secondary', () => {
     if (currentPage?.busy) return;
     if (isNew && queue.files.length) { nextInQueue(); return; }
-    if (page.confirmClose()) { page.dirty = false; if (record) details(id); else requestClose(); }
+    page.confirmClose().then(ok => {
+      if (!ok || currentPage !== page) return;
+      page.dirty = false;
+      if (record) details(id); else requestClose();
+    });
   });
   actions.append(secondary, save);
   updateAuto();
@@ -1061,7 +1091,7 @@ function shareButton(record) {
 
 async function markUsed(record, used) {
   // A gift card with money left was probably only partly spent.
-  if (used && record.balance > 0 && !confirm(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용해서 사용 완료로 표시할까요?\n일부만 썼다면 취소하고 ‘사용 금액 입력’을 눌러 주세요.`)) return;
+  if (used && record.balance > 0 && !(await ask(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용했나요? 일부만 썼다면 ‘사용 금액 입력’으로 잔액을 줄여 주세요.`, { yes: '전부 사용함', no: '취소' }))) return;
   const done = await writeFromDialog(record.id, old => ({ ...existing(old), used, updatedAt: Date.now() }), null, () => dialog.close());
   if (!done) return;
   if (used) navigator.vibrate?.(30);
@@ -1249,7 +1279,7 @@ async function settings() {
 }
 
 async function cleanUp(past) {
-  if (!confirm(`사용 완료·기간 만료 기프티콘 ${past.length}개를 삭제할까요?`)) return;
+  if (!(await ask(`사용 완료·기간 만료 기프티콘 ${past.length}개를 삭제할까요? 삭제 직후에는 되돌릴 수 있어요.`, { yes: '삭제하기', danger: true }))) return;
   try {
     await deleteMany(past.map(record => record.id));
     dialog.close();
@@ -1362,10 +1392,15 @@ function enableSwipeToClose() {
 }
 
 function wireEvents() {
-  document.body.append(dialog, viewer);
+  document.body.append(dialog, viewer, askDialog);
   dialog.addEventListener('cancel', event => {
-    if (!currentPage || currentPage.busy || (currentPage.confirmClose && !currentPage.confirmClose())) {
+    // A file picker closed without a choice fires a bubbling "cancel" on its <input>; only the
+    // sheet's own cancel (Esc, back gesture) means "close".
+    if (event.target !== dialog) return;
+    // Esc / back: pages that may ask first close through requestClose once the user answers.
+    if (!currentPage || currentPage.busy || currentPage.confirmClose) {
       event.preventDefault();
+      if (currentPage?.confirmClose && !currentPage.busy) requestClose();
       return;
     }
     queue.files = [];
@@ -1381,7 +1416,7 @@ function wireEvents() {
   });
   viewer.addEventListener('click', event => { if (event.target === viewer) viewer.close(); });
   // Tapping the dimmed area closes a sheet; a drag that started inside it (selecting text) does not.
-  for (const sheet of [dialog, $('#install-guide')]) {
+  for (const sheet of [dialog, $('#install-guide'), askDialog]) {
     let pressedOutside = false;
     sheet.addEventListener('pointerdown', event => { pressedOutside = event.target === sheet; });
     sheet.addEventListener('click', event => {
