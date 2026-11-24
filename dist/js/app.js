@@ -817,6 +817,12 @@ function details(id) {
   const shell = openDialog('기프티콘 상세', page);
   const body = el('div', 'dialog-body');
   body.append(badge(record, today), el('p', 'coupon-brand', record.brand), el('h3', 'detail-name', record.name));
+  // The main thing people open a coupon for: showing it at the counter.
+  if (isUsable(status) && (record.image || record.code)) {
+    const show = button('', 'show-button', () => openViewer(record.image, record));
+    show.append(icon('expand'), document.createTextNode('쿠폰 보여주기'));
+    body.append(show);
+  }
 
   const fields = el('dl', 'detail-fields');
   const row = (title, value) => {
@@ -958,13 +964,20 @@ async function markUsed(record, used) {
 // Full-screen coupon for the counter. With a record, the bottom bar shows the number and lets
 // the user mark it used right there, without going back to the details sheet.
 function openViewer(blob, record) {
-  const img = el('img', 'viewer-image');
-  img.src = objectURL(blob);
-  img.alt = '기프티콘 원본';
   const close = button('', 'icon-button viewer-close', () => viewer.close());
   close.append(icon('close'));
   close.setAttribute('aria-label', '닫기');
-  viewer.replaceChildren(close, img);
+  let content;
+  if (blob) {
+    content = el('img', 'viewer-image');
+    content.src = objectURL(blob);
+    content.alt = '기프티콘 원본';
+  } else {
+    // No image: the number, large enough for the cashier to type in.
+    content = el('div', 'viewer-code');
+    content.append(el('p', '', record.brand), el('strong', '', record.code));
+  }
+  viewer.replaceChildren(close, content);
   viewer.classList.toggle('has-bar', Boolean(record));
   if (record) {
     const bar = el('div', 'viewer-bar');
@@ -1208,6 +1221,35 @@ function imageFiles(dataTransfer) {
   return [...(dataTransfer?.files || [])].filter(file => IMAGE_TYPES.includes(file.type));
 }
 
+// Phones: drag a sheet down by its top edge (handle and title) to close it.
+function enableSwipeToClose() {
+  const sheetLayout = matchMedia('(max-width: 520px)');
+  let startY = null;
+  let distance = 0;
+  dialog.addEventListener('touchstart', event => {
+    if (!sheetLayout.matches || dialog.scrollTop > 0 || event.target.closest('button, input, select, a')) return;
+    const fromTop = event.touches[0].clientY - dialog.getBoundingClientRect().top;
+    if (fromTop > 80) return;
+    startY = event.touches[0].clientY;
+    distance = 0;
+    dialog.style.transition = 'none';
+  }, { passive: true });
+  dialog.addEventListener('touchmove', event => {
+    if (startY == null) return;
+    distance = Math.max(0, event.touches[0].clientY - startY);
+    dialog.style.transform = `translateY(${distance}px)`;
+  }, { passive: true });
+  const end = () => {
+    if (startY == null) return;
+    startY = null;
+    dialog.style.transition = 'transform .2s ease-out';
+    dialog.style.transform = '';
+    if (distance > 90) requestClose();
+  };
+  dialog.addEventListener('touchend', end);
+  dialog.addEventListener('touchcancel', end);
+}
+
 function wireEvents() {
   document.body.append(dialog, viewer);
   dialog.addEventListener('cancel', event => {
@@ -1217,7 +1259,10 @@ function wireEvents() {
     }
     queue.files = [];
   });
+  enableSwipeToClose();
   dialog.addEventListener('close', () => {
+    dialog.style.transform = '';
+    dialog.style.transition = '';
     currentPage = null;
     clearDialogURLs();
     keepAwake(false);
