@@ -29,6 +29,12 @@ test('expiry sort puts usable coupons first, then expired, then used', () => {
   assert.deepEqual(sortCoupons(list, 'expiry', today).map(c => c.expiry), ['2026-12-01', '2027-01-01', '2026-11-20', '2026-11-01']);
 });
 
+test('brand sort groups brands and puts the soonest usable coupon first', () => {
+  const list = [coupon('2027-03-01', { brand: 'B', id: 1 }), coupon('2026-12-01', { brand: 'A', used: true, id: 2 }),
+    coupon('2027-01-01', { brand: 'A', id: 3 }), coupon('2026-12-10', { brand: 'B', id: 4 })];
+  assert.deepEqual(sortCoupons(list, 'brand', today).map(c => c.id), [3, 2, 4, 1]);
+});
+
 test('summary counts expiring coupons as available too', () => {
   const counts = summarize([coupon('2026-11-25'), coupon('2027-01-01'), coupon('2026-01-01'), coupon('2027-01-01', { used: true })], today);
   assert.deepEqual(counts, { all: 4, available: 2, expiring: 1, used: 1, expired: 1 });

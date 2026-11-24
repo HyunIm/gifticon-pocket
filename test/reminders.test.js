@@ -12,7 +12,7 @@ test('three days before and on the expiry day, at 9:00 local time', () => {
   assert.equal(reminders[0].title, '3일 후 만료되는 기프티콘 1개');
   assert.equal(reminders[1].title, '오늘 만료되는 기프티콘 1개');
   assert.equal(reminders[1].body, '스타벅스 아메리카노 a');
-  assert.equal(reminders[1].url, '/?filter=expiring');
+  assert.equal(reminders[1].url, '/?coupon=a', 'a single coupon opens directly');
 });
 
 test('reminders in the past and used coupons are skipped', () => {
@@ -35,5 +35,6 @@ test('coupons reminded at the same time share one notification', () => {
   assert.equal(dec10.body, '오늘: 스타벅스 아메리카노 a\n오늘: 스타벅스 아메리카노 b\n외 2개');
   const dec7 = reminders.find(r => r.at === at(2026, 12, 7));
   assert.equal(dec7.title, '3일 후 만료되는 기프티콘 3개');
+  assert.equal(dec7.url, '/?filter=expiring', 'several coupons open the expiring list');
   assert.equal(new Set(reminders.map(r => r.tag)).size, reminders.length);
 });

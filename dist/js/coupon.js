@@ -43,7 +43,8 @@ export function sortCoupons(list, sort, today = localDay()) {
   const rank = item => (item.used ? 2 : daysLeft(item.expiry, today) < 0 ? 1 : 0);
   return [...list].sort((a, b) => {
     if (sort === 'newest') return b.createdAt - a.createdAt;
-    if (sort === 'brand') return a.brand.localeCompare(b.brand, 'ko') || a.name.localeCompare(b.name, 'ko');
+    // Within a brand, the coupon to use first comes first.
+    if (sort === 'brand') return a.brand.localeCompare(b.brand, 'ko') || rank(a) - rank(b) || a.expiry.localeCompare(b.expiry);
     return rank(a) - rank(b) || a.expiry.localeCompare(b.expiry) || b.createdAt - a.createdAt;
   });
 }

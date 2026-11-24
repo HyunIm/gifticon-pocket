@@ -15,6 +15,7 @@ const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const BACKUP_KEY = 'gifticon-pocket:last-backup';
 const VIEW_KEY = 'gifticon-pocket:view';
 const TIPS_KEY = 'gifticon-pocket:tips';
+const OCR_READY_KEY = 'gifticon-pocket:ocr-ready';
 const DAY = 86400000;
 const coarsePointer = matchMedia('(pointer: coarse)');
 const store = {
@@ -123,6 +124,7 @@ function render() {
   if (empty) list.replaceChildren();
   else if (!shown.length) list.replaceChildren(noResults(query, category));
   else list.replaceChildren(...withPastFolded(shown, today));
+  list.classList.toggle('grouped', $('#sort').value === 'brand' && shown.length > 0);
   for (const id of justAdded) {
     const card = cards.get(id)?.node;
     if (!card?.isConnected) continue;
@@ -137,6 +139,7 @@ function render() {
 // 전체 + 만료 임박순: usable coupons first, then one row that opens the used and expired ones.
 function withPastFolded(shown, today) {
   const nodes = shown.map(record => cardFor(record, today));
+  if ($('#sort').value === 'brand') return withBrandGroups(shown, nodes);
   if (filter !== 'all' || $('#sort').value !== 'expiry') return nodes;
   const firstPast = shown.findIndex(record => !isUsable(statusOf(record, today)));
   if (firstPast <= 0) return nodes;
@@ -149,6 +152,21 @@ function withPastFolded(shown, today) {
   toggle.setAttribute('aria-expanded', String(showPast));
   toggle.append(el('span', '', `지난 기프티콘 ${past}개`), el('span', 'past-hint', showPast ? '접기' : '사용 완료·기간 만료 보기'), icon('down'));
   return [...nodes.slice(0, firstPast), toggle, ...(showPast ? nodes.slice(firstPast) : [])];
+}
+
+// 브랜드순: a heading per brand with how many coupons it has.
+function withBrandGroups(shown, nodes) {
+  const out = [];
+  shown.forEach((record, i) => {
+    if (record.brand !== shown[i - 1]?.brand) {
+      const count = shown.filter(item => item.brand === record.brand).length;
+      const heading = el('h3', 'group-label', record.brand);
+      heading.append(el('span', '', `${count}개`));
+      out.push(heading);
+    }
+    out.push(nodes[i]);
+  });
+  return out;
 }
 
 const emptyMessages = {
@@ -575,6 +593,13 @@ function editor(record, { file = null, pick = false } = {}) {
     const category = guessCategory(inputs.brand.value, inputs.name.value);
     if (category !== '기타' || !record) inputs.category.value = category;
   });
+  inputs.code.addEventListener('change', () => {
+    const digits = codeDigits(inputs.code.value);
+    const duplicate = digits.length >= 6 && records.find(item => item.id !== id && codeDigits(item.code) === digits);
+    if (!duplicate) return;
+    status.className = 'read-status warn';
+    status.textContent = `같은 쿠폰 번호로 등록된 ‘${duplicate.name}’이(가) 있어요.`;
+  });
   inputs.balance.addEventListener('blur', () => {
     const won = parseWon(inputs.balance.value);
     inputs.balance.value = won == null ? '' : won.toLocaleString('ko-KR');
@@ -625,9 +650,15 @@ function editor(record, { file = null, pick = false } = {}) {
     status.className = 'read-status reading';
     status.textContent = '이미지를 읽고 있어요… 0%';
     try {
+      const firstTime = !store.get(OCR_READY_KEY);
       const fields = await readGifticon(blob, progress => {
-        if (still()) status.textContent = `이미지를 읽고 있어요… ${Math.round(progress * 100)}%`;
+        if (!still()) return;
+        // The first 30% is loading the engine; on the very first run that is a ~7MB download.
+        status.textContent = progress < 0.3
+          ? (firstTime ? '처음 한 번 읽기 도구를 내려받고 있어요(약 7MB)…' : '읽기 도구를 준비하고 있어요…')
+          : `이미지를 읽고 있어요… ${Math.round(progress * 100)}%`;
       });
+      store.set(OCR_READY_KEY, '1');
       if (!still()) return;
       let filled = 0;
       for (const key of ['brand', 'name', 'expiry', 'code', 'balance', 'category']) {
@@ -1381,6 +1412,10 @@ async function start() {
     else announce('공유한 이미지를 찾지 못했어요. 다시 공유해 주세요.');
   } else if (params.get('action') === 'add') {
     editor(null);
+  } else if (params.has('coupon')) {
+    // Opened from a single-coupon reminder.
+    if (records.some(record => record.id === params.get('coupon'))) details(params.get('coupon'));
+    else announce('알림의 기프티콘을 찾지 못했어요. 이미 삭제했을 수 있어요.');
   }
   if (location.search) history.replaceState(null, '', location.pathname);
 }

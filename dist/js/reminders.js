@@ -42,6 +42,8 @@ export function buildReminders(records, now = Date.now()) {
       items.sort((a, b) => a.daysBefore - b.daysBefore || label(a.record).localeCompare(label(b.record), 'ko'));
       const day = new Date(at);
       const tag = `expiry-${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`;
-      return { at, ...describe(items), tag, url: '/?filter=expiring' };
+      // One coupon: tapping the notification opens it, ready to show at the counter.
+      const url = items.length === 1 ? `/?coupon=${encodeURIComponent(items[0].record.id)}` : '/?filter=expiring';
+      return { at, ...describe(items), tag, url };
     });
 }
