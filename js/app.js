@@ -1474,10 +1474,21 @@ function wireEvents() {
     if (currentPage?.kind === 'editor' && !currentPage.busy) currentPage.setImage(files[0]);
     else if (!dialog.open) startImport(files);
   });
+  // Dragging files over the window shows where they will go.
+  let dragDepth = 0;
+  const dragging = on => document.body.classList.toggle('drop-ready', on);
+  document.addEventListener('dragenter', event => {
+    if (dialog.open || ![...event.dataTransfer.types].includes('Files')) return;
+    dragDepth++;
+    dragging(true);
+  });
+  document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dragging(false); } });
   document.addEventListener('dragover', event => {
     if (!dialog.open && [...event.dataTransfer.types].includes('Files')) event.preventDefault();
   });
   document.addEventListener('drop', event => {
+    dragDepth = 0;
+    dragging(false);
     if (dialog.open) return;
     const files = imageFiles(event.dataTransfer);
     if (!files.length) return;
