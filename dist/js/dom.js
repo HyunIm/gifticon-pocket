@@ -58,8 +58,20 @@ function setVisible(visible) {
   if (visible) toast.showPopover();
 }
 
+// Everything outside an open modal sheet is inert, which would make 실행 취소 unclickable, so the
+// toast lives inside the topmost open sheet (later in the DOM = opened on top here), or the body.
+// Call again whenever sheets open, close or replace their content.
+export function placeToast() {
+  const sheets = all('dialog[open]').filter(node => node.matches(':modal'));
+  const host = sheets.at(-1) || document.body;
+  if (toast.parentNode === host) return;
+  if (popover && toast.matches(':popover-open')) toast.hidePopover();
+  host.append(toast);
+  if (!toast.hidden && popover) toast.showPopover();
+}
+
 export function announce(message, action) {
-  if (!toast.isConnected) document.body.append(toast);
+  placeToast();
   clearTimeout(toastTimer);
   const text = el('span', '', message);
   toast.replaceChildren(text);

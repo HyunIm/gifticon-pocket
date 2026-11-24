@@ -219,6 +219,7 @@ footer svg{width:15px;height:15px}
 .auto-progress progress{width:100%;height:10px;accent-color:var(--accent)}
 .figure-actions{display:flex;justify-content:flex-end;margin-top:8px}
 .spend-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.spend-form input[type=date]{width:auto}
 .spend-form input{width:120px;min-height:34px;border:1px solid var(--edge-strong);border-radius:8px;padding:4px 8px;background:var(--surface);font-size:1rem}
 
 /* full-screen coupon: always white, for the scanner */
