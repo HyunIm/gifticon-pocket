@@ -1,0 +1,943 @@
+import { $, all, el, button, icon, announce } from './dom.js';
+import {
+  categories, localDay, daysLeft, statusOf, matchesStatus, badgeLabel, formatDate, formatWon,
+  codeDigits, sortCoupons, summarize, matchesQuery,
+} from './coupon.js';
+import { openDB, getAll, mutate, putMany, onExternalChange, existing, errorMessage } from './db.js';
+import { makeThumbnail } from './images.js';
+import { readGifticon, warmUp, ReadError } from './ocr.js';
+import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
+import { pushState, enablePush, disablePush, sendTestPush, syncReminders } from './push.js';
+import { initShell, canInstall, promptInstall, openInstallGuide } from './install.js';
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const BACKUP_KEY = 'gifticon-pocket:last-backup';
+const coarsePointer = matchMedia('(pointer: coarse)');
+const store = {
+  get: key => { try { return localStorage.getItem(key); } catch { return null; } },
+  set: (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
+};
+
+let ready = false;
+let records = [];
+let filter = 'all';
+let generation = 0;
+// Cards are built once per coupon version, so typing in the search box only reorders nodes.
+const cards = new Map();
+let currentPage = null;
+let returnFocus = null;
+let dialogURLs = [];
+let wakeLock = null;
+// Images waiting to be registered after the current one (multi-select, share, paste).
+const queue = { files: [], index: 0, total: 0 };
+
+const dialog = el('dialog', 'coupon-dialog');
+dialog.setAttribute('aria-labelledby', 'coupon-dialog-title');
+const viewer = el('dialog', 'viewer');
+viewer.setAttribute('aria-label', '기프티콘 원본 이미지');
+
+/* ---------- list ---------- */
+
+async function refresh() {
+  const version = ++generation;
+  const items = await getAll();
+  if (version !== generation) return;
+  records = items;
+  render();
+  afterRefresh();
+}
+
+function cardFor(record, today) {
+  const label = badgeLabel(record, today);
+  const key = `${record.updatedAt || record.createdAt}|${record.thumb ? 1 : 0}|${label}`;
+  const cached = cards.get(record.id);
+  if (cached?.key === key) return cached.node;
+  if (cached?.url) URL.revokeObjectURL(cached.url);
+  const card = button('', 'coupon-card', () => details(record.id));
+  card.dataset.id = record.id;
+  const media = el('span', 'coupon-image');
+  let url = null;
+  const picture = record.thumb || record.image;
+  if (picture) {
+    const img = el('img');
+    url = img.src = URL.createObjectURL(picture);
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    media.append(img);
+  } else {
+    media.textContent = (record.brand || record.name).slice(0, 1);
+    media.setAttribute('aria-hidden', 'true');
+  }
+  const info = el('span', 'coupon-info');
+  info.append(el('span', 'coupon-brand', record.brand), el('strong', 'coupon-name', record.name));
+  const meta = el('span', 'coupon-date', formatDate(record.expiry) + '까지');
+  if (record.balance != null && !record.used) meta.textContent += ' · 잔액 ' + formatWon(record.balance);
+  info.append(meta);
+  card.append(media, info, badge(record, today));
+  cards.set(record.id, { key, node: card, url });
+  return card;
+}
+
+function badge(record, today) {
+  const node = el('span', 'coupon-badge', badgeLabel(record, today));
+  node.dataset.status = statusOf(record, today);
+  return node;
+}
+
+function render() {
+  const today = localDay();
+  const query = $('#search').value;
+  const category = $('#category').value;
+  const counts = summarize(records, today);
+  all('[data-count]').forEach(node => { node.textContent = counts[node.dataset.count] ?? 0; });
+  all('[data-filter]').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.filter === filter)));
+  const shown = sortCoupons(records.filter(record =>
+    matchesStatus(filter, statusOf(record, today)) &&
+    (category === 'all' || record.category === category) &&
+    matchesQuery(record, query)), $('#sort').value, today);
+  $('#result-count').textContent = shown.length;
+
+  const ids = new Set(records.map(record => record.id));
+  for (const [id, entry] of cards) {
+    if (ids.has(id)) continue;
+    if (entry.url) URL.revokeObjectURL(entry.url);
+    cards.delete(id);
+  }
+  const empty = records.length === 0;
+  document.body.classList.toggle('has-coupons', !empty);
+  $('#empty-state').hidden = !empty;
+  const list = $('#coupon-list');
+  list.hidden = empty;
+  if (empty) list.replaceChildren();
+  else if (!shown.length) list.replaceChildren(noResults());
+  else list.replaceChildren(...shown.map(record => cardFor(record, today)));
+  updateAppBadge(counts.expiring);
+}
+
+function noResults() {
+  const box = el('div', 'no-results');
+  box.append(el('h3', '', '조건에 맞는 기프티콘이 없어요'), button('전체 보기', 'button-secondary', () => {
+    $('#search').value = '';
+    $('#category').value = 'all';
+    setFilter('all');
+  }));
+  return box;
+}
+
+function setFilter(next) {
+  filter = next;
+  render();
+}
+
+function updateAppBadge(count) {
+  if (!('setAppBadge' in navigator)) return;
+  (count ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
+}
+
+/* ---------- background work after every refresh ---------- */
+
+let pushTimer;
+let thumbing = false;
+const thumbFailures = new Set();
+
+function afterRefresh() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => syncReminders(records).catch(() => {}), 1500);
+  buildMissingThumbnails();
+  if (currentPage?.kind === 'details' && !currentPage.busy) {
+    const record = records.find(item => item.id === currentPage.id);
+    if (!record) { dialog.close(); announce('다른 창에서 삭제된 기프티콘이에요.'); }
+    else if ((record.updatedAt || record.createdAt) !== currentPage.version) details(record.id);
+  }
+}
+
+// Coupons saved before thumbnails existed (or imported from a backup) get one in the background.
+async function buildMissingThumbnails() {
+  if (thumbing) return;
+  const pending = records.filter(record => record.image && !record.thumb && !thumbFailures.has(record.id));
+  if (!pending.length) return;
+  thumbing = true;
+  try {
+    for (const record of pending) {
+      try {
+        const thumb = await makeThumbnail(record.image);
+        await mutate(record.id, current => (current?.image ? { ...current, thumb } : current || null));
+      } catch {
+        thumbFailures.add(record.id);
+      }
+    }
+  } finally {
+    thumbing = false;
+  }
+  await refresh();
+}
+
+async function protectStorage() {
+  if (!navigator.storage?.persist) return false;
+  try {
+    return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+  } catch {
+    return false;
+  }
+}
+
+/* ---------- dialog plumbing ---------- */
+
+function openDialog(title, page) {
+  if (!dialog.open) {
+    const active = document.activeElement;
+    returnFocus = { id: active?.closest?.('.coupon-card')?.dataset.id, element: active };
+  }
+  currentPage = page;
+  clearDialogURLs();
+  keepAwake(false);
+  const shell = el('div', 'dialog-shell');
+  const head = el('div', 'dialog-header');
+  const heading = el('h2', '', title);
+  heading.id = 'coupon-dialog-title';
+  const close = button('', 'icon-button', requestClose);
+  close.append(icon('close'));
+  close.setAttribute('aria-label', '닫기');
+  head.append(heading, close);
+  shell.append(head);
+  dialog.replaceChildren(shell);
+  return shell;
+}
+
+function showDialog() {
+  if (!dialog.open) dialog.showModal();
+  else dialog.querySelector('.dialog-body button, .dialog-body input:not([type=file]), .dialog-actions button')?.focus({ preventScroll: true });
+  dialog.scrollTop = 0;
+}
+
+function requestClose() {
+  if (!currentPage || currentPage.busy) return;
+  if (currentPage.confirmClose && !currentPage.confirmClose()) return;
+  queue.files = [];
+  dialog.close();
+}
+
+function clearDialogURLs() {
+  dialogURLs.forEach(url => URL.revokeObjectURL(url));
+  dialogURLs = [];
+}
+
+function objectURL(blob) {
+  const url = URL.createObjectURL(blob);
+  dialogURLs.push(url);
+  return url;
+}
+
+// Return focus to the card the dialog was opened from without scrolling the page.
+function restoreFocus() {
+  const target = returnFocus;
+  returnFocus = null;
+  if (!target) return;
+  const card = target.id && $(`.coupon-card[data-id="${CSS.escape(target.id)}"]`);
+  if (card) card.focus({ preventScroll: true });
+  else if (target.element?.isConnected && target.element !== document.body) target.element.focus({ preventScroll: true });
+}
+
+async function keepAwake(on) {
+  if (!('wakeLock' in navigator)) return;
+  if (!on) {
+    const lock = wakeLock;
+    wakeLock = null;
+    await lock?.release().catch(() => {});
+    return;
+  }
+  if (wakeLock || document.hidden) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch {
+    wakeLock = null;
+  }
+}
+
+async function writeFromDialog(id, change, message, after) {
+  const page = currentPage;
+  if (page.busy) return false;
+  page.busy = true;
+  const controls = all('button, input, select, textarea', dialog);
+  controls.forEach(node => { node.disabled = true; });
+  try {
+    await mutate(id, change);
+    await refresh();
+    if (currentPage === page && dialog.open) after();
+    if (message) announce(message);
+    return true;
+  } catch (error) {
+    if (currentPage === page && dialog.open) showError(errorMessage(error));
+    else announce(errorMessage(error));
+    return false;
+  } finally {
+    page.busy = false;
+    controls.forEach(node => { node.disabled = false; });
+  }
+}
+
+function showError(message) {
+  let error = $('.form-error', dialog);
+  if (!error) {
+    error = el('p', 'form-error');
+    error.setAttribute('role', 'alert');
+    $('.dialog-actions', dialog).before(error);
+  }
+  error.textContent = message;
+}
+
+/* ---------- register / edit ---------- */
+
+function field(labelText, input, className) {
+  const label = el('label', 'field' + (className ? ' ' + className : ''));
+  label.append(el('span', '', labelText), input);
+  return label;
+}
+
+function textInput(name, value, placeholder, maxLength, required = false) {
+  const input = el('input');
+  input.type = 'text';
+  input.name = name;
+  input.value = value ?? '';
+  input.placeholder = placeholder;
+  input.maxLength = maxLength;
+  input.required = required;
+  input.autocomplete = 'off';
+  return input;
+}
+
+const parseWon = value => {
+  const digits = value.replace(/[^\d]/g, '');
+  return digits ? Number(digits) : null;
+};
+
+function startImport(files) {
+  const images = [...files].filter(file => IMAGE_TYPES.includes(file.type));
+  if (!images.length) {
+    announce('PNG, JPG, WebP, GIF 이미지만 등록할 수 있어요.');
+    return;
+  }
+  if (!ready) { announce('기기 저장소를 준비하지 못했어요. 페이지를 새로고침해 주세요.'); return; }
+  if (currentPage?.busy) return;
+  queue.files = images.slice(1);
+  queue.index = 1;
+  queue.total = images.length;
+  editor(null, { file: images[0] });
+}
+
+function nextInQueue() {
+  const file = queue.files.shift();
+  if (!file) { dialog.close(); return; }
+  queue.index++;
+  editor(null, { file });
+}
+
+function editor(record, { file = null, pick = false } = {}) {
+  if (!ready) { announce('기기 저장소를 준비하지 못했어요. 페이지를 새로고침해 주세요.'); return; }
+  const isNew = !record;
+  if (isNew && !file) { queue.files = []; queue.index = 1; queue.total = 1; }
+  const id = record?.id || crypto.randomUUID();
+  const title = isNew ? (queue.total > 1 ? `기프티콘 등록 (${queue.index}/${queue.total})` : '기프티콘 등록') : '기프티콘 수정';
+  const page = { kind: 'editor', id, dirty: Boolean(file), touched: new Set(), autofilled: new Set(), readToken: 0 };
+  page.confirmClose = () => {
+    const parts = [];
+    if (page.dirty) parts.push('작성 중인 내용이 저장되지 않아요.');
+    if (queue.files.length) parts.push(`남은 이미지 ${queue.files.length}장도 등록하지 않아요.`);
+    return !parts.length || confirm(parts.join(' ') + ' 닫을까요?');
+  };
+  const shell = openDialog(title, page);
+  const form = el('form', 'editor-form');
+  const body = el('div', 'dialog-body');
+
+  // Image first: picking one fills in the rest.
+  const picker = el('div', 'image-picker');
+  const upload = el('input');
+  upload.type = 'file';
+  upload.accept = IMAGE_TYPES.join(',');
+  upload.multiple = isNew;
+  upload.className = 'visually-hidden';
+  upload.setAttribute('aria-label', '기프티콘 이미지 선택');
+  const preview = el('div', 'picker-preview');
+  const status = el('p', 'read-status');
+  status.setAttribute('role', 'status');
+  const pickButton = button('', 'button-secondary', () => upload.click());
+  const removeButton = button('이미지 제거', 'button-ghost', () => setImage(null));
+  picker.append(preview, el('div', 'picker-actions'), status, upload);
+  picker.querySelector('.picker-actions').append(pickButton, removeButton);
+
+  const inputs = {
+    brand: textInput('brand', record?.brand, '예) 스타벅스', 80, true),
+    name: textInput('name', record?.name, '예) 카페 아메리카노 Tall', 120, true),
+    expiry: el('input'),
+    category: el('select'),
+    code: textInput('code', record?.code, '쿠폰 번호 입력', 150),
+    balance: textInput('balance', record?.balance != null ? record.balance.toLocaleString('ko-KR') : '', '금액권만 입력', 15),
+    memo: textInput('memo', record?.memo, '예) 생일 선물, 지점 한정', 200),
+  };
+  Object.assign(inputs.expiry, { type: 'date', name: 'expiry', required: true, value: record?.expiry || '' });
+  inputs.category.name = 'category';
+  categories.forEach(value => inputs.category.add(new Option(value, value)));
+  inputs.category.value = record?.category || '기타';
+  inputs.code.inputMode = 'numeric';
+  inputs.balance.inputMode = 'numeric';
+  const grid = el('div', 'form-grid');
+  grid.append(
+    field('브랜드', inputs.brand, 'wide'), field('상품명', inputs.name, 'wide'),
+    field('유효기간', inputs.expiry), field('카테고리', inputs.category),
+    field('쿠폰 번호 (선택)', inputs.code, 'wide'),
+    field('잔액 (선택)', inputs.balance), field('메모 (선택)', inputs.memo),
+  );
+  for (const [key, input] of Object.entries(inputs)) {
+    input.addEventListener('input', () => {
+      page.dirty = true;
+      page.touched.add(key);
+      input.classList.remove('autofilled');
+    });
+  }
+  body.append(picker, grid);
+
+  let image = record?.image || null;
+  let changedImage = false;
+
+  function showPreview() {
+    preview.replaceChildren();
+    clearDialogURLs();
+    pickButton.replaceChildren(icon('image'), document.createTextNode(image ? '다른 이미지' : '이미지 선택'));
+    removeButton.hidden = !image;
+    if (image) {
+      const img = el('img', 'picker-image');
+      img.src = objectURL(image);
+      img.alt = '선택한 기프티콘 이미지';
+      preview.append(img);
+    } else {
+      const hint = el('p', 'picker-hint');
+      hint.append(el('strong', '', '기프티콘 이미지를 선택하세요'),
+        el('span', '', isNew ? '브랜드, 상품명, 유효기간, 쿠폰 번호를 자동으로 채워요. 여러 장을 한 번에 골라도 돼요.' : '이미지를 바꾸면 빈 칸을 자동으로 채워요.'));
+      preview.append(hint);
+    }
+  }
+
+  function setImage(next) {
+    image = next;
+    changedImage = true;
+    // Made while the user reviews the form, so saving does not wait for it.
+    page.thumb = next ? makeThumbnail(next).catch(() => null) : Promise.resolve(null);
+    page.dirty = true;
+    $('.form-error', dialog)?.remove();
+    showPreview();
+    if (next) readInto(next);
+    else { page.readToken++; status.textContent = ''; }
+  }
+  page.setImage = setImage;
+
+  async function readInto(blob) {
+    const token = ++page.readToken;
+    const still = () => token === page.readToken && currentPage === page;
+    status.className = 'read-status reading';
+    status.textContent = '이미지를 읽고 있어요… 0%';
+    try {
+      const fields = await readGifticon(blob, progress => {
+        if (still()) status.textContent = `이미지를 읽고 있어요… ${Math.round(progress * 100)}%`;
+      });
+      if (!still()) return;
+      let filled = 0;
+      for (const key of ['brand', 'name', 'expiry', 'code', 'balance', 'category']) {
+        const value = fields[key];
+        const input = inputs[key];
+        if (value == null || value === '' || page.touched.has(key)) continue;
+        // Never overwrite what the user or the saved coupon already had, except earlier autofill.
+        if (key !== 'category' && input.value && !page.autofilled.has(key)) continue;
+        if (key === 'category' && record) continue;
+        input.value = key === 'balance' ? Number(value).toLocaleString('ko-KR') : value;
+        page.autofilled.add(key);
+        input.classList.add('autofilled');
+        if (key !== 'category') filled++;
+      }
+      const missing = ['brand', 'name', 'expiry'].filter(key => !inputs[key].value);
+      const duplicate = fields.code && records.find(item => item.id !== id && codeDigits(item.code) === codeDigits(fields.code));
+      status.className = 'read-status ' + (filled ? 'done' : 'empty');
+      status.textContent = filled
+        ? (missing.length ? '읽은 내용을 채웠어요. 빈 칸을 채운 뒤 등록해 주세요.' : '자동으로 채웠어요. 내용을 확인한 뒤 등록해 주세요.')
+        : '읽을 수 있는 정보를 찾지 못했어요. 직접 입력해 주세요.';
+      if (duplicate) {
+        status.className = 'read-status warn';
+        status.textContent += ` 같은 쿠폰 번호로 등록된 ‘${duplicate.name}’이(가) 있어요.`;
+      }
+    } catch (error) {
+      if (!still()) return;
+      status.className = 'read-status empty';
+      status.textContent = error instanceof ReadError ? error.message : '이미지를 읽지 못했어요. 직접 입력해 주세요.';
+    }
+  }
+
+  upload.addEventListener('change', () => {
+    const files = [...upload.files];
+    upload.value = '';
+    if (!files.length) return;
+    const valid = files.filter(item => IMAGE_TYPES.includes(item.type));
+    if (!valid.length) { showError('PNG, JPG, WebP, GIF 이미지를 선택해 주세요.'); return; }
+    if (isNew && valid.length > 1) {
+      queue.files.push(...valid.slice(1));
+      queue.total = queue.index + queue.files.length;
+      $('#coupon-dialog-title').textContent = `기프티콘 등록 (${queue.index}/${queue.total})`;
+    }
+    setImage(valid[0]);
+  });
+  for (const type of ['dragenter', 'dragover']) {
+    picker.addEventListener(type, event => { event.preventDefault(); picker.classList.add('dragging'); });
+  }
+  picker.addEventListener('dragleave', () => picker.classList.remove('dragging'));
+  picker.addEventListener('drop', event => {
+    event.preventDefault();
+    picker.classList.remove('dragging');
+    const dropped = [...event.dataTransfer.files].filter(item => IMAGE_TYPES.includes(item.type));
+    if (dropped.length) setImage(dropped[0]);
+  });
+
+  const actions = el('div', 'dialog-actions');
+  const save = el('button', 'button-primary', isNew ? '등록하기' : '수정 저장');
+  save.type = 'submit';
+  if (isNew && queue.total > 1) {
+    actions.append(button('건너뛰기', 'button-secondary', () => {
+      if (currentPage?.busy) return;
+      nextInQueue();
+    }), save);
+  } else {
+    actions.append(button('취소', 'button-secondary', () => {
+      if (page.confirmClose()) { page.dirty = false; if (record) details(id); else requestClose(); }
+    }), save);
+  }
+  form.append(body, actions);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (page.busy || page.saving) return;
+    for (const input of [inputs.brand, inputs.name]) {
+      input.value = input.value.trim();
+      if (!input.reportValidity()) return;
+    }
+    if (!inputs.expiry.reportValidity()) return;
+    const fields = {
+      brand: inputs.brand.value,
+      name: inputs.name.value,
+      expiry: inputs.expiry.value,
+      category: inputs.category.value,
+      code: inputs.code.value.trim(),
+      balance: parseWon(inputs.balance.value),
+      memo: inputs.memo.value.trim(),
+    };
+    page.saving = true;
+    const thumb = changedImage ? await page.thumb : null;
+    page.saving = false;
+    const saved = await writeFromDialog(id, old => {
+      const base = record ? existing(old) : { id, used: false, createdAt: Date.now() };
+      return {
+        ...base, ...fields,
+        image: changedImage ? image : (base.image || null),
+        thumb: changedImage ? thumb : (base.thumb || null),
+        updatedAt: Date.now(),
+      };
+    }, isNew ? '기프티콘을 등록했어요.' : '수정 내용을 저장했어요.', () => {
+      page.dirty = false;
+      if (isNew && queue.files.length) nextInQueue();
+      else if (record) details(id);
+      else dialog.close();
+    });
+    if (saved) protectStorage();
+  });
+  shell.append(form);
+  showPreview();
+  showDialog();
+  if (file) setImage(file);
+  else if (isNew) warmUp();
+  // On phones, go straight to the photo picker: that is how most coupons arrive.
+  if (pick && isNew && coarsePointer.matches) upload.click();
+}
+
+/* ---------- details ---------- */
+
+const refundNote = '유효기간이 지났어도 구매처(선물하기 앱 등)에서 기간 연장이나 환불을 받을 수 있는 경우가 많아요. 만료 후에도 결제 금액의 90%를 돌려받을 수 있는지 선물함에서 확인해 보세요.';
+
+function details(id) {
+  const record = records.find(item => item.id === id);
+  if (!record) { dialog.close(); announce('삭제된 기프티콘이에요.'); return; }
+  const today = localDay();
+  const status = statusOf(record, today);
+  const page = { kind: 'details', id, version: record.updatedAt || record.createdAt };
+  const shell = openDialog('기프티콘 상세', page);
+  const body = el('div', 'dialog-body');
+  body.append(badge(record, today), el('p', 'coupon-brand', record.brand), el('h3', 'detail-name', record.name));
+
+  const fields = el('dl', 'detail-fields');
+  const row = (title, value) => {
+    const dd = el('dd');
+    if (value instanceof Node) dd.append(value); else dd.textContent = value;
+    fields.append(el('dt', '', title), dd);
+    return dd;
+  };
+  const days = daysLeft(record.expiry, today);
+  const remaining = record.used ? '' : days > 0 ? ` (${days}일 남음)` : days === 0 ? ' (오늘까지)' : ' (만료)';
+  row('유효기간', formatDate(record.expiry) + '까지' + remaining);
+  if (record.balance != null) row('잔액', formatWon(record.balance));
+  row('카테고리', record.category);
+  if (record.code) {
+    const wrap = el('span', 'code-row');
+    const copy = button('복사', 'copy-button', async () => {
+      const digits = codeDigits(record.code);
+      const value = /^[\d\s-]+$/.test(record.code) ? digits : record.code;
+      try {
+        await navigator.clipboard.writeText(value);
+        copy.textContent = '복사됨';
+      } catch {
+        copy.textContent = '복사 실패';
+      }
+      setTimeout(() => { copy.textContent = '복사'; }, 2000);
+    });
+    copy.setAttribute('aria-label', '쿠폰 번호 복사');
+    wrap.append(el('span', 'coupon-code', record.code), copy);
+    row('쿠폰 번호', wrap);
+  }
+  if (record.memo) row('메모', record.memo);
+  body.append(fields);
+  if (status === 'expired') body.append(el('p', 'notice', refundNote));
+
+  if (record.image) {
+    const figure = el('figure', 'detail-figure');
+    const open = button('', 'detail-image-button', () => openViewer(record.image));
+    open.setAttribute('aria-label', '이미지 크게 보기');
+    const img = el('img', 'detail-image');
+    img.src = objectURL(record.image);
+    img.alt = '등록한 기프티콘 원본';
+    const hint = el('span', 'zoom-hint');
+    hint.append(icon('expand'), document.createTextNode('크게 보기'));
+    open.append(img, hint);
+    figure.append(open);
+    body.append(figure);
+  }
+
+  const actions = el('div', 'dialog-actions');
+  actions.append(
+    button('삭제', 'button-danger', () => confirmDelete(record)),
+    button('수정', 'button-secondary', () => editor(record)),
+    button(record.used ? '사용 취소' : '사용 완료', 'button-primary', () => {
+      writeFromDialog(id, old => ({ ...existing(old), used: !record.used, updatedAt: Date.now() }),
+        record.used ? '사용 처리를 취소했어요.' : '사용 완료로 표시했어요.', () => dialog.close());
+    }),
+  );
+  shell.append(body, actions);
+  showDialog();
+  // The screen stays on while a usable coupon is shown at the counter.
+  if (status === 'available' || status === 'expiring') {
+    page.awake = true;
+    keepAwake(true);
+  }
+}
+
+function openViewer(blob) {
+  const url = objectURL(blob);
+  const img = el('img', 'viewer-image');
+  img.src = url;
+  img.alt = '기프티콘 원본';
+  const close = button('', 'icon-button viewer-close', () => viewer.close());
+  close.append(icon('close'));
+  close.setAttribute('aria-label', '닫기');
+  viewer.replaceChildren(close, img);
+  viewer.showModal();
+}
+
+function confirmDelete(record) {
+  const shell = openDialog('기프티콘을 삭제할까요?', { kind: 'confirm', id: record.id });
+  const body = el('div', 'dialog-body');
+  body.append(el('p', '', '‘' + record.name + '’의 쿠폰 정보와 이미지가 이 기기에서 삭제돼요.'));
+  const actions = el('div', 'dialog-actions');
+  actions.append(button('취소', 'button-secondary', () => details(record.id)), button('삭제하기', 'button-danger', async () => {
+    const snapshot = records.find(item => item.id === record.id) || record;
+    const deleted = await writeFromDialog(record.id, () => null, null, () => dialog.close());
+    if (!deleted) return;
+    announce('기프티콘을 삭제했어요.', {
+      label: '실행 취소',
+      run: () => mutate(record.id, () => ({ ...snapshot, updatedAt: Date.now() }))
+        .then(refresh).then(() => announce('삭제를 취소했어요.'))
+        .catch(error => announce(errorMessage(error))),
+    });
+  }));
+  shell.append(body, actions);
+  showDialog();
+}
+
+/* ---------- settings ---------- */
+
+function section(title, ...children) {
+  const node = el('section', 'settings-section');
+  node.append(el('h3', '', title), ...children);
+  return node;
+}
+
+async function settings() {
+  const page = { kind: 'settings' };
+  const shell = openDialog('설정', page);
+  const body = el('div', 'dialog-body settings');
+  const notify = el('div', 'settings-block');
+  const backup = el('div', 'settings-block');
+  const space = el('div', 'settings-block');
+  body.append(
+    section('만료 알림', el('p', 'settings-desc', '만료 3일 전과 만료일 오전 9시에 알려 드려요.'), notify,
+      el('p', 'settings-note', '알림을 보내려고 유효기간과 브랜드·상품명을 서버에 보관해요. 쿠폰 번호와 이미지는 보내지 않아요.')),
+    section('백업', el('p', 'settings-desc', '기기를 바꾸거나 브라우저 데이터를 지우면 쿠폰도 사라져요. 가끔 백업 파일을 저장해 두세요.'), backup),
+    section('저장 공간', space),
+  );
+  if (canInstall()) {
+    body.append(section('앱 설치', el('p', 'settings-desc', '홈 화면에 추가하면 앱처럼 열리고 오프라인에서도 쓸 수 있어요.'),
+      button('앱 설치', 'button-secondary', () => promptInstall())));
+  }
+  const actions = el('div', 'dialog-actions');
+  actions.append(button('닫기', 'button-secondary', requestClose));
+  shell.append(body, actions);
+  showDialog();
+  const still = () => currentPage === page;
+
+  async function drawNotify() {
+    const state = await pushState();
+    if (!still()) return;
+    const line = (text, cls = 'settings-status') => el('p', cls, text);
+    const run = (label, cls, task) => {
+      const node = button(label, cls, async () => {
+        node.disabled = true;
+        try {
+          await task();
+        } catch {
+          announce(navigator.onLine ? '알림 설정을 바꾸지 못했어요. 잠시 후 다시 시도하거나 브라우저를 최신 버전으로 업데이트해 주세요.' : '인터넷에 연결된 상태에서 다시 시도해 주세요.');
+        }
+        if (still()) drawNotify();
+      });
+      return node;
+    };
+    if (state === 'unsupported') notify.replaceChildren(line('이 브라우저는 알림을 지원하지 않아요.'));
+    else if (state === 'needs-install') {
+      notify.replaceChildren(line('iPhone·iPad는 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요.'),
+        button('홈 화면에 추가하는 방법', 'button-secondary', openInstallGuide));
+    } else if (state === 'denied') {
+      notify.replaceChildren(line('알림이 차단돼 있어요. 브라우저나 기기 설정에서 기프티콘 포켓의 알림을 허용해 주세요.'));
+    } else if (state === 'off') {
+      notify.replaceChildren(line('알림이 꺼져 있어요.'), run('알림 켜기', 'button-primary', async () => {
+        const result = await enablePush(records);
+        if (result === 'on') announce('만료 알림을 켰어요.');
+      }));
+    } else {
+      const row = el('div', 'settings-actions');
+      row.append(
+        run('테스트 알림 보내기', 'button-secondary', async () => { await sendTestPush(); announce('테스트 알림을 보냈어요. 잠시 후 도착해요.'); }),
+        run('알림 끄기', 'button-ghost', async () => { await disablePush(); announce('만료 알림을 껐어요.'); }),
+      );
+      notify.replaceChildren(line('알림이 켜져 있어요.', 'settings-status on'), row);
+    }
+  }
+
+  function drawBackup() {
+    const last = Number(store.get(BACKUP_KEY) || 0);
+    const input = el('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.className = 'visually-hidden';
+    input.setAttribute('aria-label', '백업 파일 선택');
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      input.value = '';
+      if (file) await importBackup(file);
+      if (still()) { drawBackup(); drawSpace(); }
+    });
+    const row = el('div', 'settings-actions');
+    row.append(
+      button('백업 파일 저장', 'button-primary', exportBackup),
+      button('백업 불러오기', 'button-secondary', () => input.click()),
+      input,
+    );
+    backup.replaceChildren(el('p', 'settings-status', last
+      ? `마지막 백업: ${formatDate(new Date(last).toISOString().slice(0, 10))}`
+      : '아직 백업 파일을 저장하지 않았어요.'), row);
+  }
+
+  async function drawSpace() {
+    let persisted = false;
+    let usage = '';
+    try {
+      persisted = await navigator.storage?.persisted?.() || false;
+      const estimate = await navigator.storage?.estimate?.();
+      if (estimate?.usage != null) usage = ` · 사용 중 ${(estimate.usage / 1048576).toFixed(1)}MB`;
+    } catch { /* unsupported */ }
+    if (!still()) return;
+    const status = el('p', 'settings-status' + (persisted ? ' on' : ''),
+      (persisted ? '보호됨: 공간이 부족해도 브라우저가 지우지 않아요.' : '보호 안 됨: 기기 공간이 부족하면 브라우저가 지울 수 있어요.'));
+    const detail = el('p', 'settings-note', `기프티콘 ${records.length}개${usage}`);
+    space.replaceChildren(status, detail);
+    if (!persisted && navigator.storage?.persist) {
+      space.append(button('보호 요청', 'button-secondary', async () => {
+        const granted = await protectStorage();
+        announce(granted ? '저장 공간을 보호하도록 설정했어요.' : '브라우저가 요청을 허락하지 않았어요. 앱을 설치하면 보호될 가능성이 높아져요.');
+        if (still()) drawSpace();
+      }));
+    }
+  }
+
+  drawBackup();
+  await Promise.all([drawNotify(), drawSpace()]);
+}
+
+async function exportBackup() {
+  try {
+    const blob = await createBackup(records);
+    const name = backupFileName();
+    const file = new File([blob], name, { type: 'application/json' });
+    // Phones: the share sheet can save to Files/Drive. Desktop: a plain download.
+    if (coarsePointer.matches && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: name });
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+        throw error;
+      }
+    } else {
+      const link = el('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }
+    store.set(BACKUP_KEY, String(Date.now()));
+    announce(`기프티콘 ${records.length}개를 백업 파일로 저장했어요.`);
+    if (currentPage?.kind === 'settings') settings();
+  } catch {
+    announce('백업 파일을 만들지 못했어요.');
+  }
+}
+
+async function importBackup(file) {
+  try {
+    const { records: incoming, skipped } = await readBackup(file);
+    await refresh();
+    const { changes, added, updated } = mergeBackup(records, incoming);
+    if (changes.length) await putMany(changes);
+    await refresh();
+    const parts = [];
+    if (added) parts.push(`${added}개 추가`);
+    if (updated) parts.push(`${updated}개 업데이트`);
+    if (skipped) parts.push(`${skipped}개는 읽지 못함`);
+    announce(parts.length ? `백업을 불러왔어요: ${parts.join(', ')}` : '이미 모두 등록된 기프티콘이에요.');
+    if (changes.length) protectStorage();
+  } catch (error) {
+    announce(error instanceof BackupError ? error.message : errorMessage(error));
+  }
+}
+
+/* ---------- start ---------- */
+
+// Files sent from another app's share sheet (Android): the service worker parks them in a cache.
+async function takeSharedFiles() {
+  if (!('caches' in window)) return [];
+  const cache = await caches.open('gifticon-pocket-share');
+  const files = [];
+  for (const request of await cache.keys()) {
+    const response = await cache.match(request);
+    const blob = await response.blob();
+    files.push(new File([blob], decodeURIComponent(response.headers.get('X-File-Name') || 'shared'), { type: blob.type }));
+    await cache.delete(request);
+  }
+  return files;
+}
+
+function imageFiles(dataTransfer) {
+  return [...(dataTransfer?.files || [])].filter(file => IMAGE_TYPES.includes(file.type));
+}
+
+function wireEvents() {
+  document.body.append(dialog, viewer);
+  dialog.addEventListener('cancel', event => {
+    if (!currentPage || currentPage.busy || (currentPage.confirmClose && !currentPage.confirmClose())) {
+      event.preventDefault();
+      return;
+    }
+    queue.files = [];
+  });
+  dialog.addEventListener('close', () => {
+    currentPage = null;
+    clearDialogURLs();
+    keepAwake(false);
+    restoreFocus();
+  });
+  viewer.addEventListener('click', event => { if (event.target === viewer || event.target.tagName === 'IMG') viewer.close(); });
+  document.addEventListener('click', event => {
+    const target = event.target.closest('[data-action="add"], [data-filter]');
+    if (!target) return;
+    if (target.dataset.action === 'add') { editor(null, { pick: true }); return; }
+    const next = target.dataset.filter;
+    // Tapping an active summary card again shows everything.
+    setFilter(target.classList.contains('stat') && filter === next ? 'all' : next);
+  });
+  $('#settings-button').addEventListener('click', settings);
+  $('#search').addEventListener('input', render);
+  $('#category').addEventListener('change', render);
+  $('#sort').addEventListener('change', render);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (currentPage?.awake) keepAwake(true);
+    if (ready) refresh().catch(error => announce(errorMessage(error)));
+  });
+  addEventListener('online', () => { if (ready) syncReminders(records).catch(() => {}); });
+  // Paste a screenshot (Ctrl+V) or drop image files anywhere to register them.
+  document.addEventListener('paste', event => {
+    const files = imageFiles(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    if (currentPage?.kind === 'editor' && !currentPage.busy) currentPage.setImage(files[0]);
+    else if (!dialog.open) startImport(files);
+  });
+  document.addEventListener('dragover', event => {
+    if (!dialog.open && [...event.dataTransfer.types].includes('Files')) event.preventDefault();
+  });
+  document.addEventListener('drop', event => {
+    if (dialog.open) return;
+    const files = imageFiles(event.dataTransfer);
+    if (!files.length) return;
+    event.preventDefault();
+    startImport(files);
+  });
+  let lastDay = localDay();
+  setInterval(() => {
+    const day = localDay();
+    if (day !== lastDay) { lastDay = day; render(); }
+  }, 30000);
+}
+
+async function start() {
+  wireEvents();
+  initShell({ isBusy: () => Boolean(currentPage?.dirty || currentPage?.busy) });
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('filter');
+  if (['available', 'expiring', 'used', 'expired'].includes(requested)) filter = requested;
+  try {
+    await openDB();
+    ready = true;
+    onExternalChange(() => refresh().catch(error => announce(errorMessage(error))));
+    await refresh();
+  } catch (error) {
+    $('#empty-state').hidden = true;
+    const list = $('#coupon-list');
+    list.hidden = false;
+    list.replaceChildren(el('p', 'no-results', errorMessage(error)));
+    announce(errorMessage(error));
+    return;
+  }
+  if (params.has('shared')) {
+    const files = await takeSharedFiles().catch(() => []);
+    if (files.length) startImport(files);
+    else announce('공유한 이미지를 찾지 못했어요. 다시 공유해 주세요.');
+  } else if (params.get('action') === 'add') {
+    editor(null);
+  }
+  if (location.search) history.replaceState(null, '', location.pathname);
+}
+
+start();
