@@ -5,7 +5,7 @@ import {
 } from './coupon.js';
 import { brands, guessCategory, findBrand, makeBrand } from './brands.js';
 import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing, errorMessage } from './db.js';
-import { makeThumbnail } from './images.js';
+import { makeThumbnail, shrinkForStorage } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
 import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
 import { pushState, enablePush, disablePush, sendTestPush, syncReminders } from './push.js';
@@ -814,6 +814,7 @@ function editor(record, { file = null, pick = false } = {}) {
     };
     page.saving = true;
     const thumb = changedImage ? await page.thumb : null;
+    if (changedImage && image) image = await shrinkForStorage(image).catch(() => image);
     page.saving = false;
     if (isNew) justAdded.add(id);
     const saved = await writeFromDialog(id, old => {
@@ -869,7 +870,7 @@ async function autoRegisterRest(draft) {
     const now = Date.now();
     const record = {
       id: crypto.randomUUID(), used: false, createdAt: now, updatedAt: now, memo: '', balance: null, category: '기타',
-      ...fields, image: file, thumb: (await thumb) || (await makeThumbnail(file).catch(() => null)),
+      ...fields, image: await shrinkForStorage(file).catch(() => file), thumb: (await thumb) || (await makeThumbnail(file).catch(() => null)),
     };
     await putMany([record]);
     justAdded.add(record.id);
@@ -1059,6 +1060,8 @@ function shareButton(record) {
 }
 
 async function markUsed(record, used) {
+  // A gift card with money left was probably only partly spent.
+  if (used && record.balance > 0 && !confirm(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용해서 사용 완료로 표시할까요?\n일부만 썼다면 취소하고 ‘사용 금액 입력’을 눌러 주세요.`)) return;
   const done = await writeFromDialog(record.id, old => ({ ...existing(old), used, updatedAt: Date.now() }), null, () => dialog.close());
   if (!done) return;
   if (used) navigator.vibrate?.(30);
