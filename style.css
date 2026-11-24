@@ -70,6 +70,8 @@ button svg,.tools svg,.stat-icon svg,footer svg,.zoom-hint svg{width:19px;height
 main.wrap{padding-top:32px}
 .hero{isolation:isolate;position:relative;overflow:hidden;border-radius:24px;background:var(--hero);min-height:264px;display:flex;align-items:center;margin-bottom:18px}
 .has-coupons .hero{display:none}
+/* Until the coupons are read, show neither the welcome screen nor an empty list. */
+.loading .hero,.loading #empty-state,.loading #coupon-list{visibility:hidden}
 .hero-copy{padding:36px 5%;position:relative;z-index:2}
 .hero h2{font-size:clamp(2rem,3.15vw,2.85rem);letter-spacing:-.075em;line-height:1.18;margin:0 0 13px;font-weight:850}
 .hero h2 span{color:#a078bb;padding-left:2px}

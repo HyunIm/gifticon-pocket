@@ -117,6 +117,7 @@ function render() {
     cards.delete(id);
   }
   const empty = records.length === 0;
+  document.body.classList.remove('loading');
   document.body.classList.toggle('has-coupons', !empty);
   $('#empty-state').hidden = !empty;
   const list = $('#coupon-list');
@@ -593,6 +594,12 @@ function editor(record, { file = null, pick = false } = {}) {
     const category = guessCategory(inputs.brand.value, inputs.name.value);
     if (category !== '기타' || !record) inputs.category.value = category;
   });
+  inputs.code.addEventListener('blur', () => {
+    // Digit-only numbers read more easily (and match the barcode caption) in groups of four.
+    if (/^[\d\s-]+$/.test(inputs.code.value) && codeDigits(inputs.code.value).length >= 8) {
+      inputs.code.value = codeDigits(inputs.code.value).replace(/(\d{4})(?=\d)/g, '$1 ');
+    }
+  });
   inputs.code.addEventListener('change', () => {
     const digits = codeDigits(inputs.code.value);
     const duplicate = digits.length >= 6 && records.find(item => item.id !== id && codeDigits(item.code) === digits);
@@ -606,6 +613,16 @@ function editor(record, { file = null, pick = false } = {}) {
   });
   body.append(picker, grid);
   updateHint();
+  // Phone keyboards: Enter (다음) moves to the next field instead of submitting half a form.
+  const order = [inputs.brand, inputs.name, inputs.expiry, inputs.code, inputs.balance, inputs.memo];
+  order.forEach((input, i) => { input.enterKeyHint = i === order.length - 1 ? 'done' : 'next'; });
+  form.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || event.isComposing || !order.includes(event.target)) return;
+    const next = order[order.indexOf(event.target) + 1];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+  });
 
   let image = record?.image || null;
   let changedImage = false;
@@ -1399,6 +1416,7 @@ async function start() {
     onExternalChange(() => refresh().catch(error => announce(errorMessage(error))));
     await refresh();
   } catch (error) {
+    document.body.classList.remove('loading');
     $('#empty-state').hidden = true;
     const list = $('#coupon-list');
     list.hidden = false;
