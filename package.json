@@ -7,7 +7,7 @@
     "vendor": "node scripts/vendor-tesseract.mjs && node scripts/refresh-offline-cache.mjs",
     "test": "node --test test/*.test.js",
     "dev": "wrangler dev",
-    "deploy": "git subtree push --prefix dist origin gh-pages",
+    "deploy": "npm run build && bash scripts/publish-gh-pages.sh",
     "deploy:worker": "wrangler deploy"
   },
   "devDependencies": {

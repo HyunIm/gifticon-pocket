@@ -51,10 +51,11 @@ npm test
 
 ## GitHub Pages 배포
 
-게시는 `gh-pages` 브랜치의 `/(root)`를 사용합니다. 앱 파일을 바꾼 뒤 `npm run build`로 오프라인 파일 목록을 갱신하고 변경 사항을 커밋합니다. 다음 명령으로 `main`과 배포 브랜치를 업데이트합니다.
+게시는 `gh-pages` 브랜치의 `/(root)`를 사용합니다. **`main`에 push하거나 PR을 병합하면 자동으로 배포됩니다.** GitHub Actions(`.github/workflows/deploy.yml`)가 테스트를 돌리고, 오프라인 파일 목록(`dist/sw.js`)을 다시 만든 뒤, `dist/`를 `gh-pages`에 올립니다. 테스트가 실패하면 배포하지 않습니다. 진행 상황은 저장소의 **Actions** 탭에서 볼 수 있고, 같은 화면의 **Run workflow**로 다시 배포할 수도 있습니다.
+
+수동으로 배포하려면 다음을 실행합니다. 자동 배포와 같은 스크립트(`scripts/publish-gh-pages.sh`)를 씁니다.
 
 ```sh
-git push origin main
 npm run deploy
 ```
 
