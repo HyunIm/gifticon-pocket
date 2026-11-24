@@ -3,6 +3,7 @@
 import { $, el, showBanner } from './dom.js';
 import { isStandalone } from './push.js';
 
+const home = new URL('../', import.meta.url);
 const agent = navigator.userAgent;
 const isAppleMobile = /iPad|iPhone|iPod/.test(agent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isAndroid = /Android/.test(agent);
@@ -71,10 +72,10 @@ function warnInAppBrowser() {
       ? () => { const url = new URL(location.href); url.searchParams.set('openExternalBrowser', '1'); location.href = url; }
       : async () => {
         try {
-          await navigator.clipboard.writeText(location.origin);
+          await navigator.clipboard.writeText(home.href);
           showBanner('in-app', '주소를 복사했어요. Safari나 Chrome 주소창에 붙여 넣어 여세요.', [['닫기', b => b.remove()]]);
         } catch {
-          showBanner('in-app', `Safari나 Chrome에서 ${location.host} 을(를) 열어 주세요.`, [['닫기', b => b.remove()]]);
+          showBanner('in-app', `Safari나 Chrome에서 ${home.href} 주소를 열어 주세요.`, [['닫기', b => b.remove()]]);
         }
       };
   showBanner('in-app', message, [[inApp === 'other' ? '주소 복사' : '다른 브라우저로 열기', external, true]], { tone: 'warn' });
@@ -118,7 +119,7 @@ async function registerServiceWorker(isBusy) {
     }, true]]);
   };
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js');
+    const reg = await navigator.serviceWorker.register(new URL('sw.js', home));
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const worker = reg.installing;

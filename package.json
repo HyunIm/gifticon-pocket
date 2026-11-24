@@ -7,7 +7,8 @@
     "vendor": "node scripts/vendor-tesseract.mjs && node scripts/refresh-offline-cache.mjs",
     "test": "node --test test/*.test.js",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "git subtree push --prefix dist origin gh-pages",
+    "deploy:worker": "wrangler deploy"
   },
   "devDependencies": {
     "@tesseract.js-data/eng": "1.0.0",

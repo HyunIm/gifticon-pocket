@@ -25,11 +25,11 @@ const shellFiles = (await walk(dist)).sort();
 const entries = await Promise.all(shellFiles.map(async file => {
   const bytes = await readFile(new URL(file, dist));
   const hash = createHash('sha256').update(bytes).digest('base64');
-  return [file === 'index.html' ? '/' : '/' + file, 'sha256-' + hash];
+  return [file === 'index.html' ? './' : file, 'sha256-' + hash];
 }));
 const vendors = (await readdir(new URL('vendor/', dist)).catch(() => [])).filter(name => name.startsWith('tesseract-'));
 if (vendors.length !== 1) throw new Error(`Expected one dist/vendor/tesseract-* directory, found ${vendors.length}. Run npm run vendor.`);
-const vendorDir = `/vendor/${vendors[0]}/`;
+const vendorDir = `vendor/${vendors[0]}/`;
 const manifest = JSON.stringify(Object.fromEntries(entries), null, 2);
 const revision = createHash('sha256').update(manifest + vendorDir).digest('hex').slice(0, 16);
 const source = await readFile(worker, 'utf8');

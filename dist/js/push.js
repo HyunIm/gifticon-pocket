@@ -2,6 +2,8 @@
 // (brand and product name); coupon numbers and images stay on the device.
 import { buildReminders } from './reminders.js';
 
+// GitHub Pages serves static assets only. A Worker deployment can also serve the push API.
+export const hasPushBackend = !location.hostname.endsWith('.github.io');
 const SYNCED_KEY = 'gifticon-pocket:push-synced';
 const storage = {
   get: key => { try { return localStorage.getItem(key); } catch { return null; } },
@@ -15,6 +17,7 @@ const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
 
 // 'unsupported' | 'needs-install' | 'denied' | 'off' | 'on'
 export async function pushState() {
+  if (!hasPushBackend) return 'unavailable';
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return 'unsupported';
   // iOS and iPadOS offer Web Push only to web apps added to the home screen.
   if (isAppleMobile() && !isStandalone()) return 'needs-install';
@@ -59,6 +62,7 @@ async function post(path, body) {
 
 // Must run from a click: browsers only show the permission prompt for a user gesture.
 export async function enablePush(records) {
+  if (!hasPushBackend) return 'unavailable';
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
   const reg = await registration();
@@ -99,6 +103,7 @@ async function digest(text) {
 
 // Sends the current schedule when it changed since the last successful sync. Safe to call often.
 export async function syncReminders(records, { force = false } = {}) {
+  if (!hasPushBackend) return false;
   if (!('Notification' in window) || Notification.permission !== 'granted') return false;
   const subscription = await currentSubscription();
   if (!subscription) return false;

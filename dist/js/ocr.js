@@ -5,7 +5,7 @@ import { parseGifticon } from './parse.js';
 import { prepareForReading } from './images.js';
 
 const VERSION = '7.0.0';
-const base = `/vendor/tesseract-${VERSION}/`;
+const base = new URL(`../vendor/tesseract-${VERSION}/`, import.meta.url).href;
 const IDLE_MS = 60000;
 
 let workerPromise;
