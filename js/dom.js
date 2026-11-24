@@ -24,6 +24,24 @@ export function icon(id) {
   return svg;
 }
 
+// A dismissible notice above the list. actions: [label, run(banner), primary?]
+export function showBanner(id, message, actions, { tone } = {}) {
+  const host = $('#banners');
+  host.querySelector(`[data-banner="${id}"]`)?.remove();
+  const banner = el('div', 'banner' + (tone ? ' banner-' + tone : ''));
+  banner.dataset.banner = id;
+  banner.append(el('p', '', message));
+  const row = el('div', 'banner-actions');
+  for (const [label, run, primary] of actions) {
+    row.append(button(label, primary ? 'banner-primary' : 'banner-secondary', () => run(banner)));
+  }
+  banner.append(row);
+  host.append(banner);
+  return banner;
+}
+
+export const removeBanner = id => $(`#banners [data-banner="${id}"]`)?.remove();
+
 // One toast at a time; an optional action button (e.g. 실행 취소) keeps it up a little longer.
 const toast = el('div', 'toast');
 toast.setAttribute('role', 'status');

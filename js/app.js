@@ -1,10 +1,10 @@
-import { $, all, el, button, icon, announce } from './dom.js';
+import { $, all, el, button, icon, announce, showBanner, removeBanner } from './dom.js';
 import {
   categories, localDay, daysLeft, statusOf, matchesStatus, badgeLabel, formatDate, formatWon,
   codeDigits, sortCoupons, summarize, matchesQuery, isUsable,
 } from './coupon.js';
 import { brands, guessCategory } from './brands.js';
-import { openDB, getAll, mutate, putMany, onExternalChange, existing, errorMessage } from './db.js';
+import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing, errorMessage } from './db.js';
 import { makeThumbnail } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
 import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
@@ -14,6 +14,8 @@ import { initShell, canInstall, promptInstall, openInstallGuide } from './instal
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const BACKUP_KEY = 'gifticon-pocket:last-backup';
 const VIEW_KEY = 'gifticon-pocket:view';
+const TIPS_KEY = 'gifticon-pocket:tips';
+const DAY = 86400000;
 const coarsePointer = matchMedia('(pointer: coarse)');
 const store = {
   get: key => { try { return localStorage.getItem(key); } catch { return null; } },
@@ -77,6 +79,7 @@ function cardFor(record, today) {
   info.append(el('span', 'coupon-brand', record.brand), el('strong', 'coupon-name', record.name));
   const meta = el('span', 'coupon-date', formatDate(record.expiry) + '까지');
   if (record.balance != null && !record.used) meta.textContent += ' · 잔액 ' + formatWon(record.balance);
+  if (record.memo) meta.textContent += ' · ' + (record.memo.length > 18 ? record.memo.slice(0, 17) + '…' : record.memo);
   info.append(meta);
   card.append(media, info, badge(record, today));
   cards.set(record.id, { key, node: card, url });
@@ -193,7 +196,10 @@ const thumbFailures = new Set();
 
 function afterRefresh() {
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => syncReminders(records).catch(() => {}), 1500);
+  pushTimer = setTimeout(() => {
+    syncReminders(records).catch(() => {});
+    updateTips();
+  }, 1500);
   buildMissingThumbnails();
   if (currentPage?.kind === 'details' && !currentPage.busy) {
     const record = records.find(item => item.id === currentPage.id);
@@ -221,6 +227,59 @@ async function buildMissingThumbnails() {
     thumbing = false;
   }
   await refresh();
+}
+
+/* ---------- tips: one suggestion at a time above the list ---------- */
+
+function readTips() {
+  try { return JSON.parse(store.get(TIPS_KEY) || '{}'); } catch { return {}; }
+}
+const tipSnoozed = (name, days) => Date.now() - (readTips()[name] || 0) < days * DAY;
+function snoozeTip(name) {
+  store.set(TIPS_KEY, JSON.stringify({ ...readTips(), [name]: Date.now() }));
+  removeBanner(name);
+}
+
+let tipsRunning = false;
+async function updateTips() {
+  if (tipsRunning || !ready) return;
+  tipsRunning = true;
+  try {
+    const usable = records.some(record => isUsable(statusOf(record)));
+    // Reminders are the feature people miss most; offer them once there is something to remind.
+    if (usable && !tipSnoozed('notify', 30) && (await pushState()) === 'off') {
+      removeBanner('backup');
+      showBanner('notify', '만료 전에 알려 드릴까요? 만료 3일 전과 만료일 오전 9시에 알림을 보내요.', [
+        ['알림 켜기', async banner => {
+          try {
+            const result = await enablePush(records);
+            if (result === 'on') { banner.remove(); announce('만료 알림을 켰어요.'); }
+            if (result === 'denied') { snoozeTip('notify'); announce('알림이 차단됐어요. 나중에 브라우저 설정에서 허용할 수 있어요.'); }
+          } catch {
+            announce('알림을 켜지 못했어요. 잠시 후 설정에서 다시 시도해 주세요.');
+          }
+        }, true],
+        ['나중에', () => snoozeTip('notify')],
+      ]);
+      return;
+    }
+    removeBanner('notify');
+    const last = Number(store.get(BACKUP_KEY) || 0);
+    const oldest = Math.min(...records.map(record => record.createdAt || Date.now()));
+    const overdue = last ? Date.now() - last > 60 * DAY : Date.now() - oldest > 14 * DAY;
+    if (records.length >= 3 && overdue && !tipSnoozed('backup', 30)) {
+      showBanner('backup', last
+        ? '마지막 백업 후 두 달이 지났어요. 백업 파일을 저장해 두면 기기를 바꿔도 쿠폰을 되찾을 수 있어요.'
+        : '아직 백업하지 않았어요. 백업 파일을 저장해 두면 기기를 바꾸거나 데이터가 지워져도 쿠폰을 되찾을 수 있어요.', [
+        ['백업 파일 저장', () => exportBackup(), true],
+        ['나중에', () => snoozeTip('backup')],
+      ]);
+    } else {
+      removeBanner('backup');
+    }
+  } finally {
+    tipsRunning = false;
+  }
 }
 
 async function protectStorage() {
@@ -684,7 +743,14 @@ function details(id) {
   const days = daysLeft(record.expiry, today);
   const remaining = record.used ? '' : days > 0 ? ` (${days}일 남음)` : days === 0 ? ' (오늘까지)' : ' (만료)';
   row('유효기간', formatDate(record.expiry) + '까지' + remaining);
-  if (record.balance != null) row('잔액', formatWon(record.balance));
+  if (record.balance != null) {
+    const balanceRow = el('span', 'code-row');
+    balanceRow.append(el('span', '', formatWon(record.balance)));
+    if (isUsable(status) && record.balance > 0) {
+      balanceRow.append(button('사용 금액 입력', 'copy-button', () => spendForm(record, balanceRow)));
+    }
+    row('잔액', balanceRow);
+  }
   row('카테고리', record.category);
   if (record.code) {
     const wrap = el('span', 'code-row');
@@ -718,6 +784,12 @@ function details(id) {
     hint.append(icon('expand'), document.createTextNode('크게 보기'));
     open.append(img, hint);
     figure.append(open);
+    const share = shareButton(record);
+    if (share) {
+      const tools = el('div', 'figure-actions');
+      tools.append(share);
+      figure.append(tools);
+    }
     body.append(figure);
   }
 
@@ -734,6 +806,57 @@ function details(id) {
     page.awake = true;
     keepAwake(true);
   }
+}
+
+// Gift cards (금액권) are spent in parts: subtract what was used, and finish it at zero.
+function spendForm(record, host) {
+  const form = el('form', 'spend-form');
+  const input = el('input');
+  Object.assign(input, { type: 'text', inputMode: 'numeric', placeholder: '사용한 금액', autocomplete: 'off' });
+  input.setAttribute('aria-label', '사용한 금액(원)');
+  const submit = el('button', 'copy-button', '차감');
+  submit.type = 'submit';
+  form.append(input, submit, button('취소', 'copy-button', () => details(record.id)));
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const spent = parseWon(input.value);
+    if (!spent) { input.focus(); return; }
+    const before = { balance: record.balance, used: record.used };
+    const balance = Math.max(0, record.balance - spent);
+    const finished = balance === 0;
+    const done = await writeFromDialog(record.id, old => ({ ...existing(old), balance, used: finished || old.used, updatedAt: Date.now() }), null,
+      () => (finished ? dialog.close() : details(record.id)));
+    if (!done) return;
+    announce(finished ? '잔액을 모두 써서 사용 완료로 표시했어요.' : `${formatWon(spent)} 사용 · 잔액 ${formatWon(balance)}`, {
+      label: '실행 취소',
+      run: () => mutate(record.id, old => ({ ...existing(old), ...before, updatedAt: Date.now() }))
+        .then(refresh).catch(error => announce(errorMessage(error))),
+    });
+  });
+  input.addEventListener('blur', () => {
+    const won = parseWon(input.value);
+    if (won != null) input.value = won.toLocaleString('ko-KR');
+  });
+  host.replaceChildren(el('span', '', formatWon(record.balance)), form);
+  input.focus();
+}
+
+// Passing a coupon on (선물) or saving it elsewhere: the system share sheet, where supported.
+function shareButton(record) {
+  if (!record.image || !navigator.canShare) return null;
+  const extension = (record.image.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+  const name = `${record.brand} ${record.name}`.replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) || 'gifticon';
+  const file = new File([record.image], `${name}.${extension}`, { type: record.image.type });
+  if (!navigator.canShare({ files: [file] })) return null;
+  const node = button('', 'button-ghost', async () => {
+    try {
+      await navigator.share({ files: [file], title: record.name });
+    } catch (error) {
+      if (error?.name !== 'AbortError') announce('이미지를 공유하지 못했어요.');
+    }
+  });
+  node.append(icon('share'), document.createTextNode('이미지 공유'));
+  return node;
 }
 
 async function markUsed(record, used) {
@@ -816,6 +939,9 @@ async function settings() {
     section('백업', el('p', 'settings-desc', '기기를 바꾸거나 브라우저 데이터를 지우면 쿠폰도 사라져요. 가끔 백업 파일을 저장해 두세요.'), backup),
     section('저장 공간', space),
   );
+  const past = records.filter(record => !isUsable(statusOf(record)));
+  body.append(section('정리', el('p', 'settings-desc', '사용했거나 기간이 지난 기프티콘을 한 번에 지워 목록과 저장 공간을 비워요.'),
+    past.length ? button(`지난 기프티콘 ${past.length}개 삭제`, 'button-danger', () => cleanUp(past)) : el('p', 'settings-status', '정리할 기프티콘이 없어요.')));
   if (canInstall()) {
     body.append(section('앱 설치', el('p', 'settings-desc', '홈 화면에 추가하면 앱처럼 열리고 오프라인에서도 쓸 수 있어요.'),
       button('앱 설치', 'button-secondary', () => promptInstall())));
@@ -913,6 +1039,21 @@ async function settings() {
   await Promise.all([drawNotify(), drawSpace()]);
 }
 
+async function cleanUp(past) {
+  if (!confirm(`사용 완료·기간 만료 기프티콘 ${past.length}개를 삭제할까요?`)) return;
+  try {
+    await deleteMany(past.map(record => record.id));
+    dialog.close();
+    await refresh();
+    announce(`기프티콘 ${past.length}개를 삭제했어요.`, {
+      label: '실행 취소',
+      run: () => putMany(past).then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
+    });
+  } catch (error) {
+    announce(errorMessage(error));
+  }
+}
+
 async function exportBackup() {
   try {
     const blob = await createBackup(records);
@@ -936,6 +1077,7 @@ async function exportBackup() {
       setTimeout(() => URL.revokeObjectURL(link.href), 10000);
     }
     store.set(BACKUP_KEY, String(Date.now()));
+    removeBanner('backup');
     announce(`기프티콘 ${records.length}개를 백업 파일로 저장했어요.`);
     if (currentPage?.kind === 'settings') settings();
   } catch {
@@ -1018,6 +1160,13 @@ function wireEvents() {
   $('#search').addEventListener('input', render);
   $('#category').addEventListener('change', render);
   $('#sort').addEventListener('change', render);
+  // Desktop shortcuts: "/" to search, "n" to register.
+  document.addEventListener('keydown', event => {
+    if (dialog.open || viewer.open || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target.closest('input, select, textarea, [contenteditable]')) return;
+    if (event.key === '/') { event.preventDefault(); $('#search').focus(); }
+    if (event.key === 'n') { event.preventDefault(); editor(null, { pick: true }); }
+  });
   $('#search').addEventListener('keydown', event => {
     if (event.key === 'Escape' && event.target.value) { event.target.value = ''; render(); }
   });

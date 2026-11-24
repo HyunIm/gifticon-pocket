@@ -1,6 +1,6 @@
 // Everything about running as an installed app: install prompts, in-app browser warnings,
 // service worker registration and updates, and the offline notice.
-import { $, el, button } from './dom.js';
+import { $, el, showBanner } from './dom.js';
 import { isStandalone } from './push.js';
 
 const agent = navigator.userAgent;
@@ -22,21 +22,6 @@ let installed = false;
 
 export const canInstall = () => !installed && !isStandalone() && !inApp &&
   Boolean(promptEvent || isAppleMobile || isAndroid || isMacSafari || isChromium);
-
-function showBanner(id, message, actions, { tone } = {}) {
-  const host = $('#banners');
-  host.querySelector(`[data-banner="${id}"]`)?.remove();
-  const banner = el('div', 'banner' + (tone ? ' banner-' + tone : ''));
-  banner.dataset.banner = id;
-  banner.append(el('p', '', message));
-  const row = el('div', 'banner-actions');
-  for (const [label, run, primary] of actions) {
-    row.append(button(label, primary ? 'banner-primary' : 'banner-secondary', () => run(banner)));
-  }
-  banner.append(row);
-  host.append(banner);
-  return banner;
-}
 
 export function openInstallGuide() {
   const guide = $('#install-guide');
