@@ -25,6 +25,8 @@
   }
 }
 *{box-sizing:border-box}
+/* The list re-renders by swapping nodes; scroll anchoring would then jump the page. */
+html{overflow-anchor:none}
 body{margin:0;line-height:1.5;background:var(--bg);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 button,input,select,textarea{font:inherit;color:inherit}
 button,select{cursor:pointer}

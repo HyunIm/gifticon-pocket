@@ -58,9 +58,20 @@ async function refresh() {
 
 function cardFor(record, today) {
   const label = badgeLabel(record, today);
-  const key = `${record.updatedAt || record.createdAt}|${record.thumb ? 1 : 0}|${label}`;
+  const key = `${record.updatedAt || record.createdAt}|${label}`;
   const cached = cards.get(record.id);
-  if (cached?.key === key) return cached.node;
+  if (cached?.key === key) {
+    // A thumbnail made in the background only swaps the picture; the card (and focus) stays.
+    if (record.thumb && !cached.hasThumb) {
+      const img = cached.node.querySelector('.coupon-image img');
+      if (img) {
+        if (cached.url) URL.revokeObjectURL(cached.url);
+        cached.url = img.src = URL.createObjectURL(record.thumb);
+        cached.hasThumb = true;
+      }
+    }
+    return cached.node;
+  }
   if (cached?.url) URL.revokeObjectURL(cached.url);
   const card = button('', 'coupon-card', () => details(record.id));
   card.dataset.id = record.id;
@@ -85,7 +96,7 @@ function cardFor(record, today) {
   if (record.memo) meta.textContent += ' · ' + (record.memo.length > 18 ? record.memo.slice(0, 17) + '…' : record.memo);
   info.append(meta);
   card.append(media, info, badge(record, today));
-  cards.set(record.id, { key, node: card, url });
+  cards.set(record.id, { key, node: card, url, hasThumb: Boolean(record.thumb) });
   return card;
 }
 
@@ -122,9 +133,8 @@ function render() {
   $('#empty-state').hidden = !empty;
   const list = $('#coupon-list');
   list.hidden = empty;
-  if (empty) list.replaceChildren();
-  else if (!shown.length) list.replaceChildren(noResults(query, category));
-  else list.replaceChildren(...withPastFolded(shown, today));
+  const next = empty ? [] : !shown.length ? [noResults(query, category)] : withPastFolded(shown, today);
+  updateList(list, next);
   list.classList.toggle('grouped', $('#sort').value === 'brand' && shown.length > 0);
   for (const id of justAdded) {
     const card = cards.get(id)?.node;
@@ -138,6 +148,22 @@ function render() {
 }
 
 // 전체 + 만료 임박순: usable coupons first, then one row that opens the used and expired ones.
+// Puts the nodes in the list, touching the DOM only when something changed, and keeps focus on
+// the same card when it is still there (re-inserting a node would otherwise drop focus).
+function updateList(list, next) {
+  const current = [...list.children];
+  if (current.length === next.length && current.every((node, i) => node === next[i])) return;
+  const active = document.activeElement;
+  const focusedId = list.contains(active) ? active.closest('.coupon-card')?.dataset.id : null;
+  const focusedToggle = list.contains(active) && active.classList.contains('past-toggle');
+  const scrollTop = document.scrollingElement.scrollTop;
+  list.replaceChildren(...next);
+  if (focusedId) $(`.coupon-card[data-id="${CSS.escape(focusedId)}"]`, list)?.focus({ preventScroll: true });
+  else if (focusedToggle) $('.past-toggle', list)?.focus({ preventScroll: true });
+  // Swapping a focused node can make the browser move the page; put it back where it was.
+  if (document.scrollingElement.scrollTop !== scrollTop) document.scrollingElement.scrollTop = scrollTop;
+}
+
 function withPastFolded(shown, today) {
   const nodes = shown.map(record => cardFor(record, today));
   if ($('#sort').value === 'brand') return withBrandGroups(shown, nodes);
@@ -145,15 +171,16 @@ function withPastFolded(shown, today) {
   const firstPast = shown.findIndex(record => !isUsable(statusOf(record, today)));
   if (firstPast <= 0) return nodes;
   const past = shown.length - firstPast;
-  const toggle = button('', 'past-toggle', () => {
-    showPast = !showPast;
-    render();
-    if (showPast) $('.past-toggle')?.focus({ preventScroll: true });
-  });
-  toggle.setAttribute('aria-expanded', String(showPast));
-  toggle.append(el('span', '', `지난 기프티콘 ${past}개`), el('span', 'past-hint', showPast ? '접기' : '사용 완료·기간 만료 보기'), icon('down'));
-  return [...nodes.slice(0, firstPast), toggle, ...(showPast ? nodes.slice(firstPast) : [])];
+  pastToggle.setAttribute('aria-expanded', String(showPast));
+  pastToggle.replaceChildren(el('span', '', `지난 기프티콘 ${past}개`), el('span', 'past-hint', showPast ? '접기' : '사용 완료·기간 만료 보기'), icon('down'));
+  return [...nodes.slice(0, firstPast), pastToggle, ...(showPast ? nodes.slice(firstPast) : [])];
 }
+
+// One toggle node for the life of the page, so re-renders do not replace it.
+const pastToggle = button('', 'past-toggle', () => {
+  showPast = !showPast;
+  render();
+});
 
 // 브랜드순: a heading per brand with how many coupons it has.
 function withBrandGroups(shown, nodes) {
@@ -324,7 +351,8 @@ async function protectStorage() {
 function openDialog(title, page) {
   if (!dialog.open) {
     const active = document.activeElement;
-    returnFocus = { id: active?.closest?.('.coupon-card')?.dataset.id, element: active };
+    const card = active?.closest?.('.coupon-card');
+    returnFocus = { id: card?.dataset.id, index: card ? all('#coupon-list .coupon-card').indexOf(card) : -1, element: active };
   }
   currentPage = page;
   clearDialogURLs();
@@ -372,8 +400,15 @@ function restoreFocus() {
   returnFocus = null;
   if (!target) return;
   const card = target.id && $(`.coupon-card[data-id="${CSS.escape(target.id)}"]`);
-  if (card) card.focus({ preventScroll: true });
-  else if (target.element?.isConnected && target.element !== document.body) target.element.focus({ preventScroll: true });
+  if (card) { card.focus({ preventScroll: true }); return; }
+  // The card left the list (used and folded away, filtered out, deleted): focus whatever now
+  // sits in its place, so keyboard and screen reader users stay where they were.
+  if (target.index >= 0) {
+    const now = all('#coupon-list .coupon-card');
+    const fallback = now[Math.min(target.index, now.length - 1)] || $('.past-toggle');
+    if (fallback) { fallback.focus({ preventScroll: true }); return; }
+  }
+  if (target.element?.isConnected && target.element !== document.body) target.element.focus({ preventScroll: true });
 }
 
 async function keepAwake(on) {
