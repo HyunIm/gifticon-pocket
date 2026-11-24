@@ -111,21 +111,21 @@ function labelledValue(lines, label) {
   return '';
 }
 
-function pickBrand(lines) {
+function pickBrand(lines, extra) {
   const labelled = labelledValue(lines, BRAND_LABEL);
   if (labelled) {
-    const known = findBrand(labelled, { loose: true });
+    const known = findBrand(labelled, { loose: true, extra });
     if (known) return known.name;
   }
   for (const line of lines) {
     const prefix = line.text.match(/^\[([^\]]{1,20})\]/);
-    const known = prefix && findBrand(prefix[1], { loose: true });
+    const known = prefix && findBrand(prefix[1], { loose: true, extra });
     if (known) return known.name;
   }
   // Brand names show up on their own line or inside the product name; count every mention.
   const votes = new Map();
   for (const line of lines) {
-    const known = findBrand(line.text, { loose: line.text.length <= 4 });
+    const known = findBrand(line.text, { loose: line.text.length <= 4, extra });
     if (known) votes.set(known.name, (votes.get(known.name) || 0) + 1);
   }
   const top = [...votes].sort((a, b) => b[1] - a[1])[0];
@@ -141,18 +141,18 @@ const fixMenuTags = name => name
   // "e카드" (gift card) loses its e to a 6.
   .replace(/(^|\s)6\s?카드/, '$1e카드');
 
-function stripBrandPrefix(name, brand) {
+function stripBrandPrefix(name, brand, extra) {
   name = fixMenuTags(name);
   const m = name.match(/^\[([^\]]{1,20})\]\s*/);
-  if (m && (!brand || findBrand(m[1], { loose: true })?.name === brand || !/[가-힣]{2}/.test(m[1]))) {
+  if (m && (!brand || findBrand(m[1], { loose: true, extra })?.name === brand || !/[가-힣]{2}/.test(m[1]))) {
     return name.slice(m[0].length);
   }
   return name;
 }
 
-function pickName(lines, brand) {
+function pickName(lines, brand, extra) {
   const labelled = labelledValue(lines, NAME_LABEL);
-  if (labelled) return stripBrandPrefix(labelled, brand);
+  if (labelled) return stripBrandPrefix(labelled, brand, extra);
   const heights = lines.map(l => l.h).filter(Boolean).sort((a, b) => a - b);
   const median = heights[Math.floor(heights.length / 2)] || 1;
   let best = null;
@@ -163,13 +163,13 @@ function pickName(lines, brand) {
     if (!/[가-힣]{2}|[A-Za-z]{3}/.test(text) || text.length < 2) continue;
     if (line.conf != null && line.conf < 45) continue;
     // A line that only names the brand is the brand caption, not the product.
-    const known = findBrand(text, { loose: text.length <= 4 });
+    const known = findBrand(text, { loose: text.length <= 4, extra });
     if (known && text.replace(/[\s\[\]()]/g, '').length <= known.name.length + 2) continue;
     if (/^[A-Z\s]+$/.test(text) && known) continue;
     const score = (line.h || median) / median + (line.conf ?? 80) / 400 + (/[가-힣]/.test(text) ? 0.2 : 0);
     if (!best || score > best.score) best = { text, score };
   }
-  return best ? stripBrandPrefix(best.text, brand) : '';
+  return best ? stripBrandPrefix(best.text, brand, extra) : '';
 }
 
 function pickBalance(lines, name) {
@@ -186,19 +186,20 @@ function pickBalance(lines, name) {
 }
 
 // lines: [{ text, h?, y?, conf? }] or strings, top to bottom.
-export function parseGifticon(input) {
+// extraBrands: brands outside the built-in list (made with makeBrand), e.g. the user's own.
+export function parseGifticon(input, { extraBrands = [] } = {}) {
   const lines = input
     .map(line => (typeof line === 'string' ? { text: line } : line))
     .map(line => ({ ...line, text: cleanLine(line.text || '') }))
     .filter(line => line.text);
-  const brand = pickBrand(lines);
-  const name = pickName(lines, brand);
+  const brand = pickBrand(lines, extraBrands);
+  const name = pickName(lines, brand, extraBrands);
   return {
     brand,
     name,
     expiry: pickExpiry(lines),
     code: pickCode(lines),
     balance: pickBalance(lines, name),
-    category: guessCategory(brand, name),
+    category: guessCategory(brand, name, extraBrands),
   };
 }
