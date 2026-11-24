@@ -27,6 +27,8 @@ let records = [];
 let filter = 'all';
 // In the 전체 list, used and expired coupons fold away under one row unless opened.
 let showPast = false;
+// Coupons just saved get a brief highlight so the user sees where they landed.
+const justAdded = new Set();
 let generation = 0;
 // Cards are built once per coupon version, so typing in the search box only reorders nodes.
 const cards = new Map();
@@ -121,6 +123,13 @@ function render() {
   if (empty) list.replaceChildren();
   else if (!shown.length) list.replaceChildren(noResults(query, category));
   else list.replaceChildren(...withPastFolded(shown, today));
+  for (const id of justAdded) {
+    const card = cards.get(id)?.node;
+    if (!card?.isConnected) continue;
+    card.classList.add('just-added');
+    setTimeout(() => card.classList.remove('just-added'), 2400);
+  }
+  justAdded.clear();
   updateAppBadge(counts.expiring);
   saveView();
 }
@@ -710,6 +719,7 @@ function editor(record, { file = null, pick = false } = {}) {
     page.saving = true;
     const thumb = changedImage ? await page.thumb : null;
     page.saving = false;
+    if (isNew) justAdded.add(id);
     const saved = await writeFromDialog(id, old => {
       const base = record ? existing(old) : { id, used: false, createdAt: Date.now() };
       return {
@@ -765,6 +775,7 @@ async function autoRegisterRest(draft) {
       ...fields, image: file, thumb: (await thumb) || (await makeThumbnail(file).catch(() => null)),
     };
     await putMany([record]);
+    justAdded.add(record.id);
     if (record.code) codes.add(codeDigits(record.code));
     saved++;
   };
@@ -1331,8 +1342,21 @@ function wireEvents() {
   }, 30000);
 }
 
+// How images can arrive on this device, shown on the empty screen.
+function importTip() {
+  const tip = $('#empty-tip');
+  if (/Android/.test(navigator.userAgent)) {
+    tip.textContent = matchMedia('(display-mode: standalone)').matches
+      ? '카카오톡에서 기프티콘 사진을 공유하고 ‘기프티콘 포켓’을 고르면 바로 등록돼요.'
+      : '앱을 설치하면 카카오톡 사진의 공유 메뉴에서 바로 보낼 수 있어요.';
+  } else if (!coarsePointer.matches) {
+    tip.textContent = '이미지 파일을 이 창에 끌어다 놓거나 붙여 넣어도(Ctrl+V) 돼요.';
+  }
+}
+
 async function start() {
   wireEvents();
+  importTip();
   initShell({ isBusy: () => Boolean(currentPage?.dirty || currentPage?.busy) });
   restoreView();
   const params = new URLSearchParams(location.search);

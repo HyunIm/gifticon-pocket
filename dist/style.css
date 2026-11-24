@@ -134,6 +134,10 @@ main.wrap{padding-top:32px}
 .empty h3{font-size:1.12rem;letter-spacing:-.045em;margin:0 0 5px}
 .empty p{color:var(--muted);font-size:.91rem;margin:0 0 15px}
 .empty-add{border:1px solid var(--edge-strong);color:var(--lilac-fg);background:var(--tint)}
+.empty-tip{margin:14px 0 0!important;font-size:.82rem!important}
+.empty-tip:empty{display:none}
+.coupon-card.just-added{animation:just-added 2.4s ease-out}
+@keyframes just-added{0%,35%{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}}
 footer{justify-content:center;gap:7px;color:var(--muted);font-size:.81rem;padding-block:24px calc(32px + env(safe-area-inset-bottom,0px));text-align:center}
 footer svg{width:15px;height:15px}
 .fab{display:none}
