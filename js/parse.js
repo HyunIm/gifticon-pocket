@@ -158,26 +158,48 @@ function stripBrandPrefix(name, brand, extra) {
   return name;
 }
 
+function nameCandidate(line, extra) {
+  const text = line.text;
+  if (LABELS.test(text) || BOILERPLATE.test(text)) return false;
+  if (findDates(text).length || /\d[\d \-]{7,}\d/.test(text)) return false;
+  if (!/[가-힣]{2}|[A-Za-z]{3}/.test(text) || text.length < 2) return false;
+  if (line.conf != null && line.conf < 45) return false;
+  // A line that only names the brand is the brand caption, not the product.
+  const known = findBrand(text, { loose: text.length <= 4, extra });
+  if (known && text.replace(/[\s\[\]()]/g, '').length <= known.name.length + 2) return false;
+  if (/^[A-Z\s]+$/.test(text) && known) return false;
+  return true;
+}
+
+// Joins two lines of one wrapped name. A Korean word split mid-way ("부드" / "러운") is glued
+// back; a break between words keeps its space.
+function joinWrapped(a, b) {
+  const tail = a.match(/([가-힣]+)$/)?.[1];
+  const head = b.match(/^([가-힣]+)/)?.[1];
+  return tail && head && tail.length <= 2 && head.length <= 3 ? a + b : `${a} ${b}`;
+}
+
 function pickName(lines, brand, extra) {
   const labelled = labelledValue(lines, NAME_LABEL);
   if (labelled) return stripBrandPrefix(labelled, brand, extra);
   const heights = lines.map(l => l.h).filter(Boolean).sort((a, b) => a - b);
   const median = heights[Math.floor(heights.length / 2)] || 1;
   let best = null;
-  for (const line of lines) {
-    const text = line.text;
-    if (LABELS.test(text) || BOILERPLATE.test(text)) continue;
-    if (findDates(text).length || /\d[\d \-]{7,}\d/.test(text)) continue;
-    if (!/[가-힣]{2}|[A-Za-z]{3}/.test(text) || text.length < 2) continue;
-    if (line.conf != null && line.conf < 45) continue;
-    // A line that only names the brand is the brand caption, not the product.
-    const known = findBrand(text, { loose: text.length <= 4, extra });
-    if (known && text.replace(/[\s\[\]()]/g, '').length <= known.name.length + 2) continue;
-    if (/^[A-Z\s]+$/.test(text) && known) continue;
-    const score = (line.h || median) / median + (line.conf ?? 80) / 400 + (/[가-힣]/.test(text) ? 0.2 : 0);
-    if (!best || score > best.score) best = { text, score };
-  }
-  return best ? stripBrandPrefix(best.text, brand, extra) : '';
+  lines.forEach((line, index) => {
+    if (!nameCandidate(line, extra)) return;
+    const score = (line.h || median) / median + (line.conf ?? 80) / 400 + (/[가-힣]/.test(line.text) ? 0.2 : 0);
+    if (!best || score > best.score) best = { index, score };
+  });
+  if (!best) return '';
+  // Long names wrap onto the next line in the same (large) type.
+  const sameSize = other => other && best && lines[best.index].h && other.h &&
+    Math.abs(other.h - lines[best.index].h) / lines[best.index].h < 0.12 && nameCandidate(other, extra);
+  let start = best.index;
+  let end = best.index;
+  while (sameSize(lines[start - 1]) && end - start < 2) start--;
+  while (sameSize(lines[end + 1]) && end - start < 2) end++;
+  const text = lines.slice(start, end + 1).map(line => line.text).reduce(joinWrapped);
+  return stripBrandPrefix(text, brand, extra);
 }
 
 function pickBalance(lines, name) {
