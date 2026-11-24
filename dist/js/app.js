@@ -144,6 +144,7 @@ function render() {
   }
   justAdded.clear();
   updateAppBadge(counts.expiring);
+  updateUrgent(today);
   saveView();
 }
 
@@ -204,6 +205,33 @@ const emptyMessages = {
   used: '사용 완료한 기프티콘이 없어요',
   expired: '기간이 지난 기프티콘이 없어요',
 };
+
+// Coupons running out within three days, at the top whenever the app is opened: the in-app
+// reminder (and the only one where no push server is available).
+const URGENT_KEY = 'gifticon-pocket:urgent-dismissed';
+let urgentText = '';
+function updateUrgent(today) {
+  const soon = records.filter(record => isUsable(statusOf(record, today)) && daysLeft(record.expiry, today) <= 3);
+  const todayCount = soon.filter(record => daysLeft(record.expiry, today) === 0).length;
+  const dismissed = store.get(URGENT_KEY) === String(today);
+  const text = !soon.length ? '' : todayCount && todayCount === soon.length ? `오늘 만료되는 기프티콘 ${todayCount}개가 있어요.`
+    : todayCount ? `오늘 만료 ${todayCount}개 포함, 3일 안에 만료되는 기프티콘 ${soon.length}개가 있어요.`
+      : `3일 안에 만료되는 기프티콘 ${soon.length}개가 있어요.`;
+  if (!text || dismissed || filter === 'expiring') {
+    urgentText = '';
+    removeBanner('urgent');
+    return;
+  }
+  if (text === urgentText && $('[data-banner="urgent"]')) return;
+  urgentText = text;
+  showBanner('urgent', text, [
+    ['보기', () => {
+      setFilter('expiring');
+      $('.collection').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    }, true],
+    ['오늘은 그만', () => { store.set(URGENT_KEY, String(today)); urgentText = ''; removeBanner('urgent'); }],
+  ], { tone: 'warn', first: true });
+}
 
 function noResults(query, category) {
   const box = el('div', 'no-results');
@@ -513,7 +541,8 @@ const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 // "2026.12.31 (목) · 37일 남음": a quick check that the read or typed date is the right one.
 function expiryHint(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { text: '', warn: false };
+  // Empty: some browsers (iOS) show a blank box, so say what goes there.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { text: '눌러서 날짜를 선택해 주세요', warn: false };
   const days = daysLeft(value);
   const weekday = WEEKDAYS[new Date(value + 'T00:00:00').getDay()];
   if (days < 0) return { text: `${weekday}요일 · 이미 지난 날짜예요`, warn: true };

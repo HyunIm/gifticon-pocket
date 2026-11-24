@@ -79,7 +79,7 @@ main.wrap{padding-top:32px}
 .hero h2 span{color:#a078bb;padding-left:2px}
 .hero p{color:var(--muted);margin:0 0 22px;font-size:1rem;letter-spacing:-.025em;line-height:1.65}
 .hero-add,.button-primary,.fab{background:var(--primary);color:var(--on-primary)}
-.hero-art{position:absolute;inset:-3% 1% -3% 44%;background:url(wallet.webp) no-repeat center/auto 105%;mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.hero-art{position:absolute;inset:-3% 1% -3% 44%;background:url(wallet.webp) no-repeat center/auto 105%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
 .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 38px}
 .stat{border:1px solid var(--edge);border-radius:17px;background:var(--surface);min-height:96px;padding:18px 24px;display:flex;align-items:center;gap:17px;text-align:left}
 .stat[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
@@ -190,6 +190,15 @@ footer svg{width:15px;height:15px}
 .field{display:grid;gap:6px;font-size:.9rem;font-weight:600;min-width:0;align-content:start}
 .field.wide{grid-column:1/-1}
 .field input,.field select{font-size:1rem;border:1px solid var(--edge-strong);border-radius:9px;width:100%;max-width:100%;min-width:0;min-height:44px;padding:8px 10px;background:var(--surface);font-weight:400}
+/* iOS draws native date fields at their own width, past the column into the next field.
+   Plain appearance makes them size like any other input; the value is left aligned as elsewhere. */
+.field input,.spend-form input{-webkit-appearance:none;appearance:none}
+.field input[type=date],.spend-form input[type=date]{display:block;min-width:0;line-height:1.4;color:var(--ink)}
+.field input[type=date]::-webkit-date-and-time-value,.spend-form input[type=date]::-webkit-date-and-time-value{text-align:left;min-height:1.4em}
+/* iOS shows nothing in an empty date field; a calendar icon says it can be tapped. */
+@supports (-webkit-touch-callout:none){
+  .field input[type=date],.spend-form input[type=date]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8590' stroke-width='1.8' stroke-linecap='round'%3E%3Crect x='3.5' y='5' width='17' height='15' rx='3'/%3E%3Cpath d='M3.5 10h17M8 3v4M16 3v4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;background-size:18px;padding-right:38px}
+}
 .field input::placeholder{color:var(--muted);opacity:.8}
 .field input.autofilled,.field select.autofilled{background:var(--ok-bg);border-color:var(--ok-edge)}
 .field input.needs-input{background:var(--need-bg);border-color:var(--need-edge)}
@@ -219,7 +228,7 @@ footer svg{width:15px;height:15px}
 .auto-progress progress{width:100%;height:10px;accent-color:var(--accent)}
 .figure-actions{display:flex;justify-content:flex-end;margin-top:8px}
 .spend-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.spend-form input[type=date]{width:auto}
+.spend-form input[type=date]{width:auto;min-width:10.5em}
 .spend-form input{width:120px;min-height:34px;border:1px solid var(--edge-strong);border-radius:8px;padding:4px 8px;background:var(--surface);font-size:1rem}
 
 /* full-screen coupon: always white, for the scanner */
@@ -230,7 +239,7 @@ footer svg{width:15px;height:15px}
 .viewer-code p{margin:0;color:#66616c;font-size:1.05rem}
 .viewer-code strong{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:clamp(1.6rem,8vw,2.6rem);letter-spacing:.06em;overflow-wrap:anywhere}
 .viewer-close{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:12px;width:42px;height:42px;background:#f1eef3;color:#1d1a22}
-.viewer-bar{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#fffffff2;border-top:1px solid #e6e2e5;backdrop-filter:blur(8px)}
+.viewer-bar{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#fffffff2;border-top:1px solid #e6e2e5;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .viewer-info{display:grid;min-width:0;flex:1}
 .viewer-info strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .viewer-info .coupon-code{font-size:1.1rem;font-weight:700}
@@ -289,7 +298,7 @@ body.drop-ready::after{content:"이미지를 놓으면 등록돼요";position:fi
   .header-button{min-height:40px;font-size:.82rem;padding:7px 10px}.header-button svg{width:16px}
   .header-icon{width:40px;height:40px}
   .hero{min-height:208px;border-radius:18px}.hero-copy{padding:24px 15px}.hero h2{font-size:1.56rem;margin-bottom:10px}.hero p{font-size:.84rem;margin-bottom:14px}.hero-add{font-size:.83rem;padding:7px 12px}
-  .hero-art{inset:7% -22% -8% 46%;background-size:auto 80%;mask-image:linear-gradient(90deg,transparent,#000 12%)}
+  .hero-art{inset:7% -22% -8% 46%;background-size:auto 80%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%);mask-image:linear-gradient(90deg,transparent,#000 12%)}
   /* Compact summary: one short row instead of three tall cards. */
   .stat{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:12px;min-height:0}
   .stat-icon{width:28px;height:28px;border-radius:8px}.stat-icon svg{width:17px;height:17px}
