@@ -1170,6 +1170,7 @@ function openViewer(blob, record) {
     const info = el('div', 'viewer-info');
     info.append(el('strong', '', record.name));
     if (record.code) info.append(el('span', 'coupon-code', record.code));
+    if (record.balance != null) info.append(el('span', 'viewer-balance', `잔액 ${formatWon(record.balance)}`));
     bar.append(info);
     if (isUsable(statusOf(record))) {
       bar.append(button('사용 완료', 'button-primary', () => {

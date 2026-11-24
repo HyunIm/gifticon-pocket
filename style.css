@@ -234,6 +234,7 @@ footer svg{width:15px;height:15px}
 .viewer-info{display:grid;min-width:0;flex:1}
 .viewer-info strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .viewer-info .coupon-code{font-size:1.1rem;font-weight:700}
+.viewer-balance{font-size:.86rem;color:#4b4552;font-weight:600}
 .viewer-bar .button-primary{background:#302b38;color:#fff;min-height:48px;padding-inline:20px}
 
 /* settings */
