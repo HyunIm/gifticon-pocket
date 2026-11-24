@@ -35,7 +35,7 @@ let returnFocus = null;
 let dialogURLs = [];
 let wakeLock = null;
 // Images waiting to be registered after the current one (multi-select, share, paste).
-const queue = { files: [], index: 0, total: 0 };
+const queue = { files: [], index: 0, total: 0, label: '' };
 
 const dialog = el('dialog', 'coupon-dialog');
 dialog.setAttribute('aria-labelledby', 'coupon-dialog-title');
@@ -459,6 +459,7 @@ function startImport(files) {
   queue.files = images.slice(1);
   queue.index = 1;
   queue.total = images.length;
+  queue.label = '';
   editor(null, { file: images[0] });
 }
 
@@ -472,9 +473,10 @@ function nextInQueue() {
 function editor(record, { file = null, pick = false } = {}) {
   if (!ready) { announce('기기 저장소를 준비하지 못했어요. 페이지를 새로고침해 주세요.'); return; }
   const isNew = !record;
-  if (isNew && !file) { queue.files = []; queue.index = 1; queue.total = 1; }
+  if (isNew && !file) Object.assign(queue, { files: [], index: 1, total: 1, label: '' });
   const id = record?.id || crypto.randomUUID();
-  const title = isNew ? (queue.total > 1 ? `기프티콘 등록 (${queue.index}/${queue.total})` : '기프티콘 등록') : '기프티콘 수정';
+  const queueTitle = () => `${queue.label || '기프티콘 등록'} (${queue.index}/${queue.total})`;
+  const title = isNew ? (queue.total > 1 ? queueTitle() : '기프티콘 등록') : '기프티콘 수정';
   const page = { kind: 'editor', id, dirty: Boolean(file), touched: new Set(), autofilled: new Set(), readToken: 0 };
   page.confirmClose = () => {
     const parts = [];
@@ -499,7 +501,22 @@ function editor(record, { file = null, pick = false } = {}) {
   status.setAttribute('role', 'status');
   const pickButton = button('', 'button-secondary', () => upload.click());
   const removeButton = button('이미지 제거', 'button-ghost', () => setImage(null));
-  picker.append(preview, el('div', 'picker-actions'), status, upload);
+  // Several images: register the rest without confirming each one.
+  const autoButton = button('', 'auto-button', () => autoRegisterRest({
+    file: image,
+    complete: Boolean(inputs.brand.value.trim() && inputs.name.value.trim() && inputs.expiry.value),
+    fields: {
+      brand: inputs.brand.value.trim(), name: inputs.name.value.trim(), expiry: inputs.expiry.value,
+      category: inputs.category.value, code: inputs.code.value.trim(), balance: parseWon(inputs.balance.value), memo: inputs.memo.value.trim(),
+    },
+    thumb: page.thumb,
+  }));
+  const updateAuto = () => {
+    autoButton.hidden = !isNew || !queue.files.length;
+    autoButton.textContent = `남은 ${queue.files.length}장은 확인 없이 자동 등록`;
+    secondary.textContent = isNew && queue.files.length ? '건너뛰기' : '취소';
+  };
+  picker.append(preview, el('div', 'picker-actions'), status, autoButton, upload);
   picker.querySelector('.picker-actions').append(pickButton, removeButton);
 
   const inputs = {
@@ -645,7 +662,8 @@ function editor(record, { file = null, pick = false } = {}) {
     if (isNew && valid.length > 1) {
       queue.files.push(...valid.slice(1));
       queue.total = queue.index + queue.files.length;
-      $('#coupon-dialog-title').textContent = `기프티콘 등록 (${queue.index}/${queue.total})`;
+      $('#coupon-dialog-title').textContent = queueTitle();
+      updateAuto();
     }
     setImage(valid[0]);
   });
@@ -663,16 +681,14 @@ function editor(record, { file = null, pick = false } = {}) {
   const actions = el('div', 'dialog-actions');
   const save = el('button', 'button-primary', isNew ? '등록하기' : '수정 저장');
   save.type = 'submit';
-  if (isNew && queue.total > 1) {
-    actions.append(button('건너뛰기', 'button-secondary', () => {
-      if (currentPage?.busy) return;
-      nextInQueue();
-    }), save);
-  } else {
-    actions.append(button('취소', 'button-secondary', () => {
-      if (page.confirmClose()) { page.dirty = false; if (record) details(id); else requestClose(); }
-    }), save);
-  }
+  // 건너뛰기 while more images wait, otherwise 취소.
+  const secondary = button('', 'button-secondary', () => {
+    if (currentPage?.busy) return;
+    if (isNew && queue.files.length) { nextInQueue(); return; }
+    if (page.confirmClose()) { page.dirty = false; if (record) details(id); else requestClose(); }
+  });
+  actions.append(secondary, save);
+  updateAuto();
   form.append(body, actions);
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -717,6 +733,75 @@ function editor(record, { file = null, pick = false } = {}) {
   else if (isNew) warmUp();
   // On phones, go straight to the photo picker: that is how most coupons arrive.
   if (pick && isNew && coarsePointer.matches) upload.click();
+}
+
+// Reads each remaining image and saves it when brand, name and expiry were all found and the
+// number is new. The rest come back one by one for the user to check.
+async function autoRegisterRest(draft) {
+  const files = queue.files.splice(0);
+  const review = [];
+  const codes = new Set(records.map(record => codeDigits(record.code)).filter(Boolean));
+  let saved = 0;
+  const page = { kind: 'auto', busy: true, stop: false };
+  const shell = openDialog('자동 등록', page);
+  const body = el('div', 'dialog-body auto-progress');
+  const label = el('p', 'read-status reading', '준비하고 있어요…');
+  label.setAttribute('role', 'status');
+  const bar = el('progress');
+  bar.max = files.length;
+  bar.value = 0;
+  const note = el('p', 'settings-note', '브랜드·상품명·유효기간을 모두 읽은 기프티콘만 바로 등록하고, 나머지는 끝난 뒤 하나씩 보여 드려요.');
+  body.append(label, bar, note);
+  const actions = el('div', 'dialog-actions');
+  const stop = button('중지', 'button-secondary', () => { page.stop = true; stop.disabled = true; label.textContent = '지금 이미지까지만 처리하고 멈출게요…'; });
+  actions.append(stop);
+  shell.append(body, actions);
+  showDialog();
+
+  const save = async (file, fields, thumb) => {
+    const now = Date.now();
+    const record = {
+      id: crypto.randomUUID(), used: false, createdAt: now, updatedAt: now, memo: '', balance: null, category: '기타',
+      ...fields, image: file, thumb: (await thumb) || (await makeThumbnail(file).catch(() => null)),
+    };
+    await putMany([record]);
+    if (record.code) codes.add(codeDigits(record.code));
+    saved++;
+  };
+  try {
+    if (draft.complete && draft.file) await save(draft.file, draft.fields, draft.thumb);
+    else if (draft.file) review.push(draft.file);
+    for (const [i, file] of files.entries()) {
+      if (page.stop) { review.push(...files.slice(i)); break; }
+      label.textContent = `자동 등록 중… ${i + 1}/${files.length}`;
+      try {
+        const found = await readGifticon(file);
+        const duplicate = found.code && codes.has(codeDigits(found.code));
+        if (found.brand && found.name && found.expiry && !duplicate) {
+          await save(file, { brand: found.brand, name: found.name, expiry: found.expiry, category: found.category, code: found.code, balance: found.balance });
+        } else {
+          review.push(file);
+        }
+      } catch {
+        review.push(file);
+      }
+      bar.value = i + 1;
+    }
+  } catch (error) {
+    announce(errorMessage(error));
+  } finally {
+    page.busy = false;
+  }
+  await refresh().catch(() => {});
+  if (saved) protectStorage();
+  if (!review.length) {
+    dialog.close();
+    announce(`기프티콘 ${saved}개를 자동으로 등록했어요.`);
+    return;
+  }
+  announce(saved ? `${saved}개를 등록했어요. ${review.length}개는 확인이 필요해요.` : `${review.length}개 모두 확인이 필요해요.`);
+  Object.assign(queue, { files: review.slice(1), index: 1, total: review.length, label: '확인이 필요한 기프티콘' });
+  editor(null, { file: review[0] });
 }
 
 /* ---------- details ---------- */
