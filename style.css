@@ -122,6 +122,10 @@ main.wrap{padding-top:32px}
 .coupon-badge[data-status=expired]{background:var(--grey-bg);color:var(--grey-fg)}
 .coupon-card:has([data-status=used]),.coupon-card:has([data-status=expired]){background:transparent}
 .coupon-card:has([data-status=used]) .coupon-image,.coupon-card:has([data-status=expired]) .coupon-image{opacity:.55;filter:grayscale(.6)}
+.group-label{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;margin:10px 2px -4px;font-size:1rem;letter-spacing:-.02em}
+.group-label:first-child{margin-top:0}
+#coupon-list.grouped .coupon-card .coupon-brand{display:none}
+.group-label span{color:var(--muted);font-size:.84rem;font-weight:600}
 .past-toggle{grid-column:1/-1;display:flex;align-items:center;gap:10px;width:100%;padding:13px 16px;border:1px dashed var(--edge-strong);border-radius:14px;color:var(--ink);font-weight:700;text-align:left}
 .past-toggle .past-hint{margin-left:auto;color:var(--muted);font-weight:500;font-size:.86rem}
 .past-toggle svg{width:16px;height:16px;transition:transform .15s}
