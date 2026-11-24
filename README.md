@@ -27,7 +27,7 @@ iPhone·iPad는 홈 화면에 추가한 앱에서만 만료 알림을 받을 수
 
 ## 이미지 읽기의 동작 방식
 
-[Tesseract.js](https://github.com/naptha/tesseract.js) 7과 한국어·영어 모델(`best_int`)을 `dist/vendor/`에 함께 배포합니다. 처음 이미지를 읽을 때 약 7.6MB를 내려받고, 이후에는 서비스 워커가 보관합니다. 읽은 글자에서 유효기간, 쿠폰 번호, 브랜드(주요 브랜드 약 120개), 상품명, 금액권 잔액을 찾는 규칙은 `dist/js/parse.js`와 `dist/js/brands.js`에 있습니다. 바코드를 읽을 수 있는 브라우저(Android Chrome 등)에서는 바코드 값을 쿠폰 번호로 씁니다.
+[Tesseract.js](https://github.com/naptha/tesseract.js) 7과 한국어·영어 모델(`best_int`)을 `dist/vendor/`에 함께 배포합니다. 처음 이미지를 읽을 때 약 7.6MB를 내려받고, 이후에는 서비스 워커가 보관합니다. 읽은 글자에서 유효기간, 쿠폰 번호, 브랜드(주요 브랜드 약 160개), 상품명, 금액권 잔액을 찾는 규칙은 `dist/js/parse.js`와 `dist/js/brands.js`에 있습니다. 바코드를 읽을 수 있는 브라우저(Android Chrome 등)에서는 바코드 값을 쿠폰 번호로 씁니다.
 
 자동으로 채운 값은 초록색으로 표시되며, 등록 전에 확인하고 고칠 수 있습니다.
 

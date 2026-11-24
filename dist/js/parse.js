@@ -1,5 +1,5 @@
 // Turns OCR lines from a gifticon image into coupon fields. Pure functions, no DOM.
-import { findBrand, guessCategory } from './brands.js';
+import { findBrand, guessCategory, isBrandText } from './brands.js';
 
 const EXPIRY_WORDS = /유효\s*기[간한]|사용\s*기[간한]|교환\s*기[간한]|만료|기한|까지|VALID|EXP/i;
 const OTHER_DATE_WORDS = /주문|발송|구매|결제|발행|선물\s*일|수신|등록|승인|보낸|받은/;
@@ -145,7 +145,15 @@ function stripBrandPrefix(name, brand, extra) {
   name = fixMenuTags(name);
   const m = name.match(/^\[([^\]]{1,20})\]\s*/);
   if (m && (!brand || findBrand(m[1], { loose: true, extra })?.name === brand || !/[가-힣]{2}/.test(m[1]))) {
-    return name.slice(m[0].length);
+    name = name.slice(m[0].length);
+  }
+  // "스타벅스 e카드 5만원 교환권" -> "e카드 5만원 교환권": the brand is shown on its own line already.
+  const words = name.split(' ');
+  for (const count of [2, 1]) {
+    if (!brand || words.length <= count) continue;
+    const head = words.slice(0, count).join(' ');
+    const known = findBrand(head, { loose: true, extra });
+    if (known?.name === brand && isBrandText(head, known)) return words.slice(count).join(' ');
   }
   return name;
 }

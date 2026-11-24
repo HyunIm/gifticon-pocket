@@ -114,7 +114,7 @@
   "sample": "oliveyoung-amount",
   "truth": {
    "brand": "올리브영",
-   "name": "올리브영 기프트카드 3만원권",
+   "name": "기프트카드 3만원권",
    "expiry": "2027-11-23",
    "code": "3017442899100057",
    "category": "쇼핑",
@@ -204,7 +204,7 @@
   "sample": "cu-voucher",
   "truth": {
    "brand": "CU",
-   "name": "CU 모바일상품권 5천원권",
+   "name": "모바일상품권 5천원권",
    "expiry": "2027-05-31",
    "code": "10479925336108",
    "category": "편의점",
@@ -415,7 +415,7 @@
   "sample": "h-ecard",
   "truth": {
    "brand": "스타벅스",
-   "name": "스타벅스 e카드 5만원 교환권",
+   "name": "e카드 5만원 교환권",
    "expiry": "2031-11-24",
    "code": "7781200394451234",
    "category": "카페",
@@ -485,7 +485,7 @@
   "sample": "h-chicken-long",
   "truth": {
    "brand": "교촌치킨",
-   "name": "교촌 허니콤보 웨지감자 세트",
+   "name": "허니콤보 웨지감자 세트",
    "expiry": "2027-01-08",
    "code": "920013457788",
    "category": "외식"

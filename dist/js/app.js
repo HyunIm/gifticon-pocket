@@ -319,6 +319,19 @@ async function updateTips() {
       return;
     }
     removeBanner('notify');
+    // Installing gives a home screen icon (and the share menu on Android). iPhone has its own banner.
+    const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (records.length && canInstall() && !apple && !tipSnoozed('install', 30)) {
+      removeBanner('backup');
+      showBanner('install', /Android/.test(navigator.userAgent)
+        ? '앱으로 설치하면 홈 화면에서 바로 열고, 카카오톡 사진의 공유 메뉴로 등록할 수 있어요.'
+        : '앱으로 설치하면 작업 표시줄이나 Dock에서 바로 열 수 있어요.', [
+        ['앱 설치', async banner => { await promptInstall(); if (!canInstall()) banner.remove(); }, true],
+        ['나중에', () => snoozeTip('install')],
+      ]);
+      return;
+    }
+    removeBanner('install');
     const last = Number(store.get(BACKUP_KEY) || 0);
     const oldest = Math.min(...records.map(record => record.createdAt || Date.now()));
     const overdue = last ? Date.now() - last > 60 * DAY : Date.now() - oldest > 14 * DAY;
@@ -1452,6 +1465,7 @@ function wireEvents() {
     if (ready) refresh().catch(error => announce(errorMessage(error)));
   });
   addEventListener('online', () => { if (ready) syncReminders(records).catch(() => {}); });
+  addEventListener('appinstalled', () => removeBanner('install'));
   // Paste a screenshot (Ctrl+V) or drop image files anywhere to register them.
   document.addEventListener('paste', event => {
     const files = imageFiles(event.clipboardData);

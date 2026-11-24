@@ -25,6 +25,11 @@ test('reminders in the past and used coupons are skipped', () => {
   assert.deepEqual(reminders.map(r => r.at), [at(2026, 11, 26)]);
 });
 
+test('a name that already starts with the brand is not doubled', () => {
+  const [reminder] = buildReminders([coupon('x', '2026-12-10', { name: '스타벅스 e카드 5만원' })], at(2026, 12, 9));
+  assert.equal(reminder.body, '스타벅스 e카드 5만원');
+});
+
 test('coupons reminded at the same time share one notification', () => {
   const now = at(2026, 11, 1);
   const reminders = buildReminders([

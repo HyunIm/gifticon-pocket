@@ -4,7 +4,8 @@ export const REMIND_DAYS_BEFORE = [3, 0];
 export const REMIND_HOUR = 9;
 const MAX_REMINDERS = 100;
 
-const label = record => [record.brand, record.name].filter(Boolean).join(' ');
+// "스타벅스 아메리카노", without doubling a brand the name already starts with.
+const label = record => (record.brand && !record.name.startsWith(record.brand) ? `${record.brand} ${record.name}` : record.name);
 
 function describe(items) {
   const today = items.filter(item => item.daysBefore === 0);

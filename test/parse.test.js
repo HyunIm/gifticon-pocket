@@ -59,13 +59,15 @@ test('brand matching', () => {
   assert.equal(findBrand('6525', { loose: true })?.name, 'GS25');
   assert.equal(findBrand('이마트24 상품권')?.name, '이마트24');
   assert.equal(guessCategory('', '치즈 피자 L'), '외식');
+  assert.equal(findBrand('홈마트 할인'), null, 'a short Hangul part of a mixed name (ABC마트) does not match alone');
+  assert.equal(findBrand('교환처 GS 더프레시')?.name, 'GS더프레시', 'longer names win over GS25');
 });
 
 test('brands from the wallet are recognised without a 교환처 label', () => {
-  const lines = ['파리크라상', '딸기 생크림 케이크', '1234 5678 9012', '유효기간 2027.03.01'];
+  const lines = ['동네빵집 우리밀', '딸기 생크림 케이크', '1234 5678 9012', '유효기간 2027.03.01'];
   assert.equal(parseGifticon(lines).brand, '', 'unknown to the built-in list');
-  const got = parseGifticon(lines, { extraBrands: [makeBrand('파리크라상', '카페')] });
-  assert.equal(got.brand, '파리크라상');
+  const got = parseGifticon(lines, { extraBrands: [makeBrand('동네빵집 우리밀', '카페')] });
+  assert.equal(got.brand, '동네빵집 우리밀');
   assert.equal(got.name, '딸기 생크림 케이크');
   assert.equal(got.category, '카페');
 });
