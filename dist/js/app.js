@@ -690,8 +690,8 @@ function editor(record, { file = null, pick = false } = {}) {
     expiry: el('input'),
     category: el('select'),
     code: textInput('code', record?.code, '쿠폰 번호 입력', 150),
-    balance: textInput('balance', record?.balance != null ? record.balance.toLocaleString('ko-KR') : '', '금액권만 입력', 15),
-    memo: textInput('memo', record?.memo, '예) 생일 선물, 지점 한정', 200),
+    balance: textInput('balance', record?.balance != null ? record.balance.toLocaleString('ko-KR') : '', '예) 30,000', 15),
+    memo: textInput('memo', record?.memo, '예) 생일 선물', 200),
   };
   Object.assign(inputs.expiry, { type: 'date', name: 'expiry', required: true, value: record?.expiry || '' });
   inputs.category.name = 'category';
@@ -714,7 +714,7 @@ function editor(record, { file = null, pick = false } = {}) {
     field('브랜드', inputs.brand, 'wide'), field('상품명', inputs.name, 'wide'),
     field('유효기간', inputs.expiry, '', hint), field('카테고리', inputs.category),
     field('쿠폰 번호 (선택)', inputs.code, 'wide'),
-    field('잔액 (선택)', inputs.balance), field('메모 (선택)', inputs.memo),
+    field('금액권 잔액 (원)', inputs.balance), field('메모 (선택)', inputs.memo),
   );
   for (const [key, input] of Object.entries(inputs)) {
     input.addEventListener(key === 'category' ? 'change' : 'input', () => {
