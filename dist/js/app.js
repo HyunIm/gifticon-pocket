@@ -1387,6 +1387,38 @@ function confirmDelete(record) {
 
 /* ---------- settings ---------- */
 
+const THEME_KEY = 'gifticon-pocket:theme';
+const THEME_COLORS = { light: '#ffffff', dark: '#1e1b23' };
+
+// index.html applies the saved theme before first paint; this keeps the browser bar in step.
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+  else delete root.dataset.theme;
+  for (const meta of all('meta[name="theme-color"]')) {
+    const own = /dark/.test(meta.media) ? 'dark' : 'light';
+    meta.content = THEME_COLORS[root.dataset.theme || own];
+  }
+}
+
+function themeControl() {
+  const current = store.get(THEME_KEY) || 'system';
+  const group = el('fieldset', 'segmented');
+  group.append(el('legend', 'visually-hidden', '화면 테마'));
+  for (const [value, label] of [['system', '기기 설정'], ['light', '밝게'], ['dark', '어둡게']]) {
+    const option = el('label', '', label);
+    const input = el('input');
+    Object.assign(input, { type: 'radio', name: 'theme', value, checked: value === current });
+    input.addEventListener('change', () => {
+      store.set(THEME_KEY, value);
+      applyTheme(value);
+    });
+    option.prepend(input);
+    group.append(option);
+  }
+  return group;
+}
+
 function section(title, ...children) {
   const node = el('section', 'settings-section');
   node.append(el('h3', '', title), ...children);
@@ -1412,6 +1444,7 @@ async function settings() {
       el('p', 'settings-note', '쿠폰을 새로 등록했다면 다시 받아 추가해 주세요. 같은 쿠폰은 겹치지 않고 바뀐 내용으로 갱신돼요.')),
     section('백업', el('p', 'settings-desc', '기기를 바꾸거나 브라우저 데이터를 지우면 쿠폰도 사라져요. 가끔 백업 파일을 저장해 두세요.'), backup),
     section('저장 공간', space),
+    section('화면', el('p', 'settings-desc', '기기 설정을 따르거나 밝은 화면·어두운 화면으로 고정할 수 있어요.'), themeControl()),
   );
   const past = records.filter(record => !isUsable(statusOf(record)));
   body.append(section('정리', el('p', 'settings-desc', '사용했거나 기간이 지난 기프티콘을 한 번에 지워 목록과 저장 공간을 비워요.'),
@@ -1802,6 +1835,7 @@ function openFromURL(params) {
 async function start() {
   wireEvents();
   importTip();
+  applyTheme(store.get(THEME_KEY));
   initShell({ isBusy: () => Boolean(currentPage?.dirty || currentPage?.busy) });
   restoreView();
   const params = new URLSearchParams(location.search);

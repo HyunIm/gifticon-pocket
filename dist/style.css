@@ -12,8 +12,9 @@
   font-family:"Pretendard","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR","Malgun Gothic",system-ui,sans-serif;
   color:var(--ink);background:var(--bg);font-synthesis:none;-webkit-text-size-adjust:100%
 }
+/* Theme: follows the device unless the user picked one in settings (html[data-theme]). */
 @media (prefers-color-scheme:dark){
-  :root{
+  :root:not([data-theme=light]){
     color-scheme:dark;
     --bg:#141218;--surface:#1e1b23;--surface-2:#2b2731;--tint:#272130;--hero:#2a2338;
     --ink:#ece8f1;--muted:#a9a3b1;--edge:#34303b;--edge-strong:#4a4452;--accent:#b49ad3;
@@ -25,6 +26,17 @@
     --backdrop:#000000a6;--shadow:#00000080;
     --glass:#26222c99;--glass-edge:#ffffff1f;--glass-shine:#ffffff14;--glass-pill:#ffffff1f;
   }
+}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#141218;--surface:#1e1b23;--surface-2:#2b2731;--tint:#272130;--hero:#2a2338;
+  --ink:#ece8f1;--muted:#a9a3b1;--edge:#34303b;--edge-strong:#4a4452;--accent:#b49ad3;
+  --primary:#ece8f1;--on-primary:#1b1820;--chip-on:#ece8f1;
+  --lilac-bg:#2e2640;--lilac-fg:#cdb9e6;--peach-bg:#3b2a1d;--peach-fg:#f2b688;--mint-bg:#1f3328;--mint-fg:#93d3b0;
+  --red-bg:#43201d;--red-fg:#ffb1a8;--grey-bg:#2b2731;--grey-fg:#b3adbb;
+  --danger-bg:#3d2422;--danger-fg:#f4aaa3;--warn-bg:#33281c;--warn-edge:#5c4630;--warn-fg:#f0cfa6;
+  --ok-fg:#93d3b0;--ok-bg:#1c2b22;--ok-edge:#3f7a57;--need-edge:#c88745;--need-bg:#2e241a;
+  --backdrop:#000000a6;--shadow:#00000080;
 }
 *{box-sizing:border-box}
 /* The list re-renders by swapping nodes; scroll anchoring would then jump the page. */
@@ -268,6 +280,11 @@ footer svg{width:15px;height:15px}
 .settings-status{margin:0 0 10px;font-weight:600;font-size:.9375rem}
 .settings-status.on{color:var(--ok-fg)}
 .settings-actions{display:flex;gap:8px;flex-wrap:wrap}
+.segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;margin:0;border:0;border-radius:12px;background:var(--surface-2)}
+.segmented label{position:relative;display:grid;place-items:center;min-height:40px;border-radius:9px;font-weight:600;font-size:.9rem;color:var(--muted);cursor:pointer}
+.segmented input{position:absolute;inset:0;margin:0;opacity:0;cursor:pointer}
+.segmented label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 3px var(--shadow)}
+.segmented label:has(input:focus-visible){outline:3px solid var(--accent);outline-offset:1px}
 
 /* install guide */
 .install-icon{display:block;border-radius:16px}
