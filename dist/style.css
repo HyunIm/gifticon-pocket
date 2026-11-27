@@ -189,7 +189,16 @@ main.wrap{padding-top:32px}
 .empty-tip{margin:14px 0 0!important;font-size:.8125rem!important}
 .empty-tip:empty{display:none}
 .coupon-card.just-added{animation:just-added 2.4s ease-out}
-@keyframes just-added{0%,35%{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}}
+/* A new coupon drops into its place, then glows for a moment. */
+@keyframes just-added{0%{opacity:0;transform:translateY(-18px) scale(1.03)}14%{opacity:1;transform:none}0%,35%{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}}
+.coupon-card.flying{position:fixed;z-index:8;margin:0;pointer-events:none;box-shadow:0 12px 30px var(--shadow)}
+.done-stamp{position:fixed;z-index:9;left:50%;top:42%;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--surface) 88%,transparent);box-shadow:0 14px 40px var(--shadow);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);pointer-events:none;animation:stamp 0.95s cubic-bezier(.3,1.4,.45,1) forwards}
+.done-stamp svg{width:72px;height:72px;fill:none;stroke:var(--ok-fg);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.done-stamp circle{stroke-dasharray:145;stroke-dashoffset:145;animation:draw .45s .05s ease-out forwards}
+.done-stamp path{stroke-dasharray:36;stroke-dashoffset:36;animation:draw .3s .38s ease-out forwards}
+.viewer .done-stamp{background:#ffffffe6}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes stamp{0%{opacity:0;transform:scale(.6)}18%{opacity:1;transform:scale(1)}75%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.92)}}
 footer{justify-content:center;gap:7px;color:var(--muted);font-size:.8125rem;padding-block:24px calc(32px + env(safe-area-inset-bottom,0px));text-align:center}
 footer svg{width:15px;height:15px}
 .fab{display:none}

@@ -1318,12 +1318,65 @@ function shareButton(record) {
   return node;
 }
 
+/* ---------- feedback when a coupon is used ---------- */
+
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// A card as it looks now, to animate after the list has already re-rendered without it.
+function captureCard(id) {
+  const node = cards.get(id)?.node;
+  if (!node?.isConnected) return null;
+  const rect = node.getBoundingClientRect();
+  if (rect.bottom < 0 || rect.top > innerHeight) return null;
+  return { clone: node.cloneNode(true), rect };
+}
+
+// Phones: a used coupon shrinks into the 지난 tab, so it is clear where it went.
+function flyToPast(captures) {
+  const tab = $('.tab[data-tab="past"]');
+  if (calm() || !phone.matches || !tab?.offsetWidth) return;
+  const target = tab.getBoundingClientRect();
+  const flights = captures.filter(Boolean).map(({ clone, rect }) => {
+    clone.classList.add('flying');
+    Object.assign(clone.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+    document.body.append(clone);
+    const dx = target.left + target.width / 2 - (rect.left + rect.width / 2);
+    const dy = target.top + target.height / 2 - (rect.top + rect.height / 2);
+    return clone.animate([
+      { transform: 'none', opacity: 1 },
+      { transform: `translate(${dx * 0.35}px, ${dy * 0.15 - 20}px) scale(.8)`, opacity: 0.9, offset: 0.35 },
+      { transform: `translate(${dx}px, ${dy}px) scale(.1)`, opacity: 0.15 },
+    ], { duration: 560, easing: 'cubic-bezier(.4,0,.7,.2)' }).finished.finally(() => clone.remove());
+  });
+  if (flights.length) Promise.all(flights).then(() => {
+    tab.classList.remove('pop');
+    void tab.offsetWidth;
+    tab.classList.add('pop');
+  }, () => {});
+}
+
+// A check that draws itself in the middle of the screen: done.
+function doneStamp() {
+  if (calm()) return;
+  const stamp = el('div', 'done-stamp');
+  stamp.setAttribute('aria-hidden', 'true');
+  stamp.innerHTML = '<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="m15 27 7.5 7.5L38 19"/></svg>';
+  const host = all('dialog[open]').filter(node => node.matches(':modal')).at(-1) || document.body;
+  host.append(stamp);
+  setTimeout(() => stamp.remove(), 950);
+}
+
 async function markUsed(record, used) {
   // A gift card with money left was probably only partly spent.
   if (used && record.balance > 0 && !(await ask(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용했나요? 일부만 썼다면 ‘사용 금액 입력’으로 잔액을 줄여 주세요.`, { yes: '다 썼어요', no: '취소' }))) return;
+  const capture = used ? captureCard(record.id) : null;
   const done = await writeFromDialog(record.id, old => ({ ...existing(old), used, updatedAt: Date.now() }), null, () => dialog.close());
   if (!done) return;
-  if (used) navigator.vibrate?.(30);
+  if (used) {
+    navigator.vibrate?.(30);
+    doneStamp();
+    flyToPast([capture]);
+  }
   announce(used ? `‘${record.name}’ 사용 완료` : '사용 처리를 취소했어요.', {
     label: '실행 취소',
     run: () => mutate(record.id, old => ({ ...existing(old), used: !used, updatedAt: Date.now() }))
@@ -1388,7 +1441,7 @@ function openViewer(blob, record) {
       bar.append(button('사용 완료', 'button-primary', async () => {
         if (!group) { viewer.close(); markUsed(current, true); return; }
         // Several coupons: stay on screen and move to the next one.
-        if (!(await quickToggleUsed(current))) return;
+        if (!(await quickToggleUsed(current, { stamp: true }))) return;
         group = group.filter(item => item.id !== current.id);
         if (!group.length) { viewer.close(); return; }
         if (group.length === 1) { record = group[0]; group = null; index = 0; blob = record.image; draw('right'); return; }
@@ -1415,7 +1468,7 @@ function openViewer(blob, record) {
 
 /* ---------- swipe a card: right = 사용 완료 (or 사용 취소), left = 삭제, both undoable ---------- */
 
-async function quickToggleUsed(record) {
+async function quickToggleUsed(record, { stamp = false } = {}) {
   const used = !record.used;
   if (used && record.balance > 0 && !(await ask(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용했나요? 일부만 썼다면 ‘사용 금액 입력’으로 잔액을 줄여 주세요.`, { yes: '다 썼어요', no: '취소' }))) return false;
   try {
@@ -1426,6 +1479,7 @@ async function quickToggleUsed(record) {
     return false;
   }
   if (used) navigator.vibrate?.(30);
+  if (used && stamp) doneStamp();
   announce(used ? `‘${record.name}’ 사용 완료` : '사용 처리를 취소했어요.', {
     label: '실행 취소',
     run: () => mutate(record.id, old => ({ ...existing(old), used: !used, updatedAt: Date.now() }))
@@ -1519,12 +1573,14 @@ async function bulkUsed(list) {
   const withMoney = list.filter(record => record.balance > 0);
   if (withMoney.length && !(await ask(`잔액이 남은 금액권 ${withMoney.length}개가 있어요. 모두 사용 완료할까요?`, { yes: '모두 사용 완료', no: '취소' }))) return;
   const now = Date.now();
+  const captures = list.map(record => captureCard(record.id));
   try {
     await putMany(list.map(record => ({ ...existing(record), used: true, updatedAt: now })));
   } catch (error) { announce(errorMessage(error)); return; }
   stopSelecting();
   await refresh();
   navigator.vibrate?.(30);
+  flyToPast(captures);
   announce(`${list.length}개를 사용 완료했어요.`, {
     label: '실행 취소',
     run: () => putMany(list.map(record => ({ ...existing(record), used: record.used, updatedAt: Date.now() })))
