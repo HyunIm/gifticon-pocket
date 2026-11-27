@@ -4,7 +4,7 @@ import {
   codeDigits, sortCoupons, summarize, matchesQuery, isUsable,
 } from './coupon.js';
 import { brands, guessCategory, findBrand, makeBrand } from './brands.js';
-import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing, errorMessage } from './db.js';
+import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing, errorMessage, detach } from './db.js';
 import { makeThumbnail, shrinkForStorage } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
 import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
@@ -1531,6 +1531,10 @@ function openViewer(blob, record) {
   viewer.showModal();
 }
 
+// Safari's images read from IndexedDB point at files inside the database: deleting the coupon
+// deletes those files, so 실행 취소 keeps a copy with the images in memory, made before the delete.
+const keepForUndo = detach;
+
 /* ---------- swipe a card: right = 사용 완료 (or 사용 취소), left = 삭제, both undoable ---------- */
 
 async function quickToggleUsed(record, { stamp = false } = {}) {
@@ -1554,7 +1558,9 @@ async function quickToggleUsed(record, { stamp = false } = {}) {
 }
 
 async function quickDelete(record) {
+  let kept;
   try {
+    kept = await keepForUndo(record);
     await mutate(record.id, () => null);
     await refresh();
   } catch (error) {
@@ -1563,7 +1569,7 @@ async function quickDelete(record) {
   }
   announce('기프티콘을 삭제했어요.', {
     label: '실행 취소',
-    run: () => mutate(record.id, () => ({ ...record, updatedAt: Date.now() }))
+    run: () => mutate(record.id, () => ({ ...kept, updatedAt: Date.now() }))
       .then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
   });
   return true;
@@ -1657,28 +1663,31 @@ async function bulkUsed(list) {
   const now = Date.now();
   const captures = list.map(record => captureCard(record.id));
   try {
-    await putMany(list.map(record => ({ ...existing(record), used: true, updatedAt: now })));
-  } catch (error) { announce(errorMessage(error)); return; }
+    for (const record of list) await mutate(record.id, old => ({ ...existing(old), used: true, updatedAt: now }));
+  } catch (error) { announce(errorMessage(error)); await refresh(); return; }
   stopSelecting();
   await refresh();
   navigator.vibrate?.(30);
   flyToPast(captures);
   announce(`${list.length}개를 사용 완료했어요.`, {
     label: '실행 취소',
-    run: () => putMany(list.map(record => ({ ...existing(record), used: record.used, updatedAt: Date.now() })))
+    run: () => list.reduce((done, record) => done.then(() =>
+      mutate(record.id, old => ({ ...existing(old), used: record.used, updatedAt: Date.now() }))), Promise.resolve())
       .then(refresh).catch(error => announce(errorMessage(error))),
   });
 }
 
 async function bulkDelete(list) {
+  let kept;
   try {
+    kept = await Promise.all(list.map(keepForUndo));
     await deleteMany(list.map(record => record.id));
   } catch (error) { announce(errorMessage(error)); return; }
   stopSelecting();
   await refresh();
   announce(`${list.length}개를 삭제했어요.`, {
     label: '실행 취소',
-    run: () => putMany(list.map(record => ({ ...record, updatedAt: Date.now() })))
+    run: () => putMany(kept.map(record => ({ ...record, updatedAt: Date.now() })))
       .then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
   });
 }
@@ -1885,7 +1894,13 @@ function confirmDelete(record) {
   body.append(el('p', '', '‘' + record.name + '’의 쿠폰 정보와 이미지가 이 기기에서 삭제돼요.'));
   const actions = el('div', 'dialog-actions');
   actions.append(button('취소', 'button-secondary', () => details(record.id)), button('삭제하기', 'button-danger', async () => {
-    const snapshot = records.find(item => item.id === record.id) || record;
+    let snapshot;
+    try {
+      snapshot = await keepForUndo(records.find(item => item.id === record.id) || record);
+    } catch (error) {
+      showError(errorMessage(error));
+      return;
+    }
     const deleted = await writeFromDialog(record.id, () => null, null, () => dialog.close());
     if (!deleted) return;
     announce('기프티콘을 삭제했어요.', {
@@ -2064,12 +2079,13 @@ async function settings() {
 async function cleanUp(past) {
   if (!(await ask(`사용 완료·기간 만료 기프티콘 ${past.length}개를 삭제할까요? 삭제 직후에는 되돌릴 수 있어요.`, { yes: '삭제하기', danger: true }))) return;
   try {
+    const kept = await Promise.all(past.map(keepForUndo));
     await deleteMany(past.map(record => record.id));
     dialog.close();
     await refresh();
     announce(`기프티콘 ${past.length}개를 삭제했어요.`, {
       label: '실행 취소',
-      run: () => putMany(past).then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
+      run: () => putMany(kept).then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
     });
   } catch (error) {
     announce(errorMessage(error));
