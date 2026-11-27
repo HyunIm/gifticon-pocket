@@ -33,7 +33,8 @@ function validDate(y, m, d) {
 
 const pad = n => String(n).padStart(2, '0');
 
-export function findDates(text, { allowShortYear = false } = {}) {
+// today: for dates printed without a year ("12월 31일까지"), which then mean the next such day.
+export function findDates(text, { allowShortYear = false, today = new Date() } = {}) {
   const found = [];
   const full = /(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})(?!\d)/g;
   for (const m of text.matchAll(full)) {
@@ -46,15 +47,28 @@ export function findDates(text, { allowShortYear = false } = {}) {
       if (validDate(y, mo, d)) found.push({ value: `${y}-${pad(mo)}-${pad(d)}`, index: m.index });
     }
   }
+  // Month and day only, next to an expiry label: the coming occurrence. A date up to a month
+  // ago still counts as this year's (an image saved a little late), not next year's.
+  if (!found.length && allowShortYear) {
+    const noYear = /(?<![\d.])(\d{1,2})\s*(?:월\s*(\d{1,2})\s*일|[./]\s*(\d{1,2})(?![\d.]))/g;
+    for (const m of text.matchAll(noYear)) {
+      const [mo, d] = [+m[1], +(m[2] || m[3])];
+      let y = today.getFullYear();
+      if (!validDate(y, mo, d) && !validDate(y + 1, mo, d)) continue;
+      const days = (Date.UTC(y, mo - 1, d) - Date.UTC(y, today.getMonth(), today.getDate())) / 86400000;
+      if (days < -31 || !validDate(y, mo, d)) y++;
+      if (validDate(y, mo, d)) found.push({ value: `${y}-${pad(mo)}-${pad(d)}`, index: m.index });
+    }
+  }
   return found;
 }
 
-function pickExpiry(lines) {
+function pickExpiry(lines, today) {
   let best = null;
   lines.forEach((line, i) => {
     const previous = lines[i - 1]?.text || '';
     const keyword = EXPIRY_WORDS.test(line.text) || (EXPIRY_WORDS.test(previous) && !/\d/.test(previous));
-    const dates = findDates(line.text, { allowShortYear: keyword });
+    const dates = findDates(line.text, { allowShortYear: keyword, today });
     if (!dates.length) return;
     // A range "2026.01.01 ~ 2026.12.31" ends on the expiry date.
     const latest = dates.reduce((a, b) => (b.value > a.value ? b : a));
@@ -93,7 +107,21 @@ function pickCode(lines) {
       }
     }
   }
+  // Codes with letters (app store and game cards): groups like ABCD-1234-EFGH-5678.
+  for (const line of lines) {
+    if (NOT_CODE_WORDS.test(line.text) && !CODE_WORDS.test(line.text)) continue;
+    const upper = line.text.toUpperCase();
+    for (const m of upper.matchAll(/(?<![A-Z0-9])[A-Z0-9]{4,5}(?:[ \-][A-Z0-9]{4,5}){2,4}(?![A-Z0-9])/g)) {
+      const code = m[0].replace(/ /g, '-');
+      if (!/[A-Z]/.test(code) || !/\d/.test(code)) continue;
+      let score = 1;
+      if (CODE_WORDS.test(line.text)) score += 4;
+      if (upper.replace(/[\s\-]/g, '') === code.replace(/-/g, '')) score += 3;
+      if (!best || score > best.score) best = { value: code, score, letters: true };
+    }
+  }
   if (!best) return '';
+  if (best.letters) return best.value;
   // Show the number the way it is printed on most coupons: groups of four.
   return best.value.replace(/(\d{4})(?=\d)/g, '$1 ');
 }
@@ -217,7 +245,7 @@ function pickBalance(lines, name) {
 
 // lines: [{ text, h?, y?, conf? }] or strings, top to bottom.
 // extraBrands: brands outside the built-in list (made with makeBrand), e.g. the user's own.
-export function parseGifticon(input, { extraBrands = [] } = {}) {
+export function parseGifticon(input, { extraBrands = [], today = new Date() } = {}) {
   const lines = input
     .map(line => (typeof line === 'string' ? { text: line } : line))
     .map(line => ({ ...line, text: cleanLine(line.text || '') }))
@@ -227,7 +255,7 @@ export function parseGifticon(input, { extraBrands = [] } = {}) {
   return {
     brand,
     name,
-    expiry: pickExpiry(lines),
+    expiry: pickExpiry(lines, today),
     code: pickCode(lines),
     balance: pickBalance(lines, name),
     category: guessCategory(brand, name, extraBrands),
