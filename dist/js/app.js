@@ -8,8 +8,7 @@ import { openDB, getAll, mutate, putMany, deleteMany, onExternalChange, existing
 import { makeThumbnail, shrinkForStorage } from './images.js';
 import { readGifticon, warmUp, ReadError } from './ocr.js';
 import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
-import { hasPushBackend, pushState, enablePush, disablePush, sendTestPush, syncReminders } from './push.js';
-import { initShell, canInstall, promptInstall, openInstallGuide } from './install.js';
+import { initShell, canInstall, promptInstall } from './install.js';
 import { buildCalendar } from './calendar.js';
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -472,16 +471,13 @@ function updateAppBadge(count) {
 
 /* ---------- background work after every refresh ---------- */
 
-let pushTimer;
+let tipsTimer;
 let thumbing = false;
 const thumbFailures = new Set();
 
 function afterRefresh() {
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => {
-    syncReminders(records).catch(() => {});
-    updateTips();
-  }, 1500);
+  clearTimeout(tipsTimer);
+  tipsTimer = setTimeout(updateTips, 1500);
   buildMissingThumbnails();
   if (currentPage?.kind === 'details' && !currentPage.busy) {
     const record = records.find(item => item.id === currentPage.id);
@@ -528,24 +524,16 @@ async function updateTips() {
   tipsRunning = true;
   try {
     const usable = records.some(record => isUsable(statusOf(record)));
-    // Reminders are the feature people miss most; offer them once there is something to remind.
-    if (usable && !tipSnoozed('notify', 30) && (await pushState()) === 'off') {
+    // Reminders are the feature people miss most: a calendar file brings them without the app.
+    if (usable && !tipSnoozed('calendar', 30)) {
       removeBanner('backup');
-      showBanner('notify', '만료 전에 알려 드릴까요? 만료 3일 전과 만료일 오전 9시에 알림을 보내요.', [
-        ['알림 켜기', async banner => {
-          try {
-            const result = await enablePush(records);
-            if (result === 'on') { banner.remove(); announce('만료 알림을 켰어요.'); }
-            if (result === 'denied') { snoozeTip('notify'); announce('알림이 차단됐어요. 나중에 브라우저 설정에서 허용할 수 있어요.'); }
-          } catch {
-            announce('알림을 켜지 못했어요. 잠시 후 설정에서 다시 시도해 주세요.');
-          }
-        }, true],
-        ['나중에', () => snoozeTip('notify')],
+      showBanner('calendar', '만료일을 휴대폰 캘린더에 넣어 두면 만료 3일 전과 당일 오전 9시에 알림이 와요. 앱을 열지 않아도 돼요.', [
+        ['캘린더에 추가', banner => { downloadCalendar(); snoozeTip('calendar'); banner.remove(); }, true],
+        ['나중에', () => snoozeTip('calendar')],
       ]);
       return;
     }
-    removeBanner('notify');
+    removeBanner('calendar');
     // Installing gives a home screen icon (and the share menu on Android). iPhone has its own banner.
     const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (records.length && canInstall() && !apple && !tipSnoozed('install', 30)) {
@@ -1958,17 +1946,10 @@ async function settings() {
   const page = { kind: 'settings' };
   const shell = openDialog('설정', page);
   const body = el('div', 'dialog-body settings');
-  const notify = el('div', 'settings-block');
   const backup = el('div', 'settings-block');
   const space = el('div', 'settings-block');
   body.append(
-    hasPushBackend ? section('만료 알림', el('p', 'settings-desc', '만료 3일 전과 만료일 오전 9시에 알려 드려요.'), notify,
-      el('p', 'settings-note', '알림을 보내려고 유효기간과 브랜드·상품명을 서버에 보관해요. 쿠폰 번호와 이미지는 보내지 않아요.')) :
-      section('만료 임박', el('p', 'settings-desc', '유효기간이 7일 이내인 기프티콘을 확인할 수 있어요.'),
-        button('만료 임박 보기', 'button-secondary', () => { dialog.close(); setFilter('expiring'); })),
-    section('캘린더 알림', el('p', 'settings-desc', hasPushBackend
-      ? '알림 대신 캘린더를 쓰고 싶다면, 만료일을 캘린더에 넣어 두면 만료 3일 전과 당일 오전 9시에 캘린더가 알려 줘요.'
-      : '만료일을 휴대폰 캘린더에 넣어 두면 만료 3일 전과 당일 오전 9시에 캘린더가 알려 줘요. 앱을 열지 않아도 알림이 와요.'),
+    section('만료 알림', el('p', 'settings-desc', '만료일을 휴대폰 캘린더에 넣어 두면 만료 3일 전과 당일 오전 9시에 캘린더가 알려 줘요. 앱을 열지 않아도 알림이 와요.'),
       calendarButton(),
       el('p', 'settings-note', '쿠폰을 새로 등록했다면 다시 받아 추가해 주세요. 같은 쿠폰은 겹치지 않고 바뀐 내용으로 갱신돼요.')),
     section('백업', el('p', 'settings-desc', '기기를 바꾸거나 브라우저 데이터를 지우면 쿠폰도 사라져요. 가끔 백업 파일을 저장해 두세요.'), backup),
@@ -1987,44 +1968,6 @@ async function settings() {
   shell.append(body, actions);
   showDialog();
   const still = () => currentPage === page;
-
-  async function drawNotify() {
-    if (!hasPushBackend) return;
-    const state = await pushState();
-    if (!still()) return;
-    const line = (text, cls = 'settings-status') => el('p', cls, text);
-    const run = (label, cls, task) => {
-      const node = button(label, cls, async () => {
-        node.disabled = true;
-        try {
-          await task();
-        } catch {
-          announce(navigator.onLine ? '알림 설정을 바꾸지 못했어요. 잠시 후 다시 시도하거나 브라우저를 최신 버전으로 업데이트해 주세요.' : '인터넷에 연결된 상태에서 다시 시도해 주세요.');
-        }
-        if (still()) drawNotify();
-      });
-      return node;
-    };
-    if (state === 'unsupported') notify.replaceChildren(line('이 브라우저는 알림을 지원하지 않아요.'));
-    else if (state === 'needs-install') {
-      notify.replaceChildren(line('iPhone·iPad는 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요.'),
-        button('홈 화면에 추가하는 방법', 'button-secondary', openInstallGuide));
-    } else if (state === 'denied') {
-      notify.replaceChildren(line('알림이 차단돼 있어요. 브라우저나 기기 설정에서 기프티콘 포켓의 알림을 허용해 주세요.'));
-    } else if (state === 'off') {
-      notify.replaceChildren(line('알림이 꺼져 있어요.'), run('알림 켜기', 'button-primary', async () => {
-        const result = await enablePush(records);
-        if (result === 'on') announce('만료 알림을 켰어요.');
-      }));
-    } else {
-      const row = el('div', 'settings-actions');
-      row.append(
-        run('테스트 알림 보내기', 'button-secondary', async () => { await sendTestPush(); announce('테스트 알림을 보냈어요. 잠시 후 도착해요.'); }),
-        run('알림 끄기', 'button-ghost', async () => { await disablePush(); announce('만료 알림을 껐어요.'); }),
-      );
-      notify.replaceChildren(line('알림이 켜져 있어요.', 'settings-status on'), row);
-    }
-  }
 
   function drawBackup() {
     const last = Number(store.get(BACKUP_KEY) || 0);
@@ -2073,7 +2016,7 @@ async function settings() {
   }
 
   drawBackup();
-  await Promise.all([drawNotify(), drawSpace()]);
+  await drawSpace();
 }
 
 async function cleanUp(past) {
@@ -2097,17 +2040,19 @@ async function cleanUp(past) {
 function calendarButton() {
   const { count } = buildCalendar(records);
   if (!count) return el('p', 'settings-status', '사용할 수 있는 기프티콘이 없어요.');
-  return button(`캘린더 파일 받기 (${count}개)`, 'button-secondary', () => {
-    const { text } = buildCalendar(records);
-    const link = el('a');
-    link.href = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }));
-    link.download = 'gifticon-pocket-expiry.ics';
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
-    announce('캘린더 파일을 받았어요. 파일을 열어 캘린더에 추가해 주세요.');
-  });
+  return button(`캘린더 파일 받기 (${count}개)`, 'button-secondary', downloadCalendar);
+}
+
+function downloadCalendar() {
+  const { text } = buildCalendar(records);
+  const link = el('a');
+  link.href = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }));
+  link.download = 'gifticon-pocket-expiry.ics';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  announce('캘린더 파일을 받았어요. 파일을 열어 캘린더에 추가해 주세요.');
 }
 
 async function exportBackup() {
@@ -2300,7 +2245,6 @@ function wireEvents() {
     if (currentPage?.awake) keepAwake(true);
     if (ready) refresh().catch(error => announce(errorMessage(error)));
   });
-  addEventListener('online', () => { if (ready) syncReminders(records).catch(() => {}); });
   addEventListener('appinstalled', () => removeBanner('install'));
   // Paste a screenshot (Ctrl+V) or drop image files anywhere to register them.
   document.addEventListener('paste', event => {
@@ -2386,9 +2330,6 @@ async function start() {
     announce(errorMessage(error));
     return;
   }
-  navigator.serviceWorker?.addEventListener('message', event => {
-    if (event.data?.type === 'open') openFromURL(new URL(event.data.url, location.href).searchParams);
-  });
   if (params.has('shared')) {
     const files = await takeSharedFiles().catch(() => []);
     if (files.length) startImport(files);

@@ -13,16 +13,13 @@
     "vendor": "node scripts/vendor-tesseract.mjs && node scripts/vendor-zxing.mjs && node scripts/refresh-offline-cache.mjs",
     "test": "node --test test/*.test.js",
     "screenshots": "node scripts/screenshots.mjs",
-    "dev": "wrangler dev",
-    "deploy": "npm run build && bash scripts/publish-gh-pages.sh",
-    "deploy:worker": "wrangler deploy"
+    "deploy": "npm run build && bash scripts/publish-gh-pages.sh"
   },
   "devDependencies": {
     "@tesseract.js-data/eng": "1.0.0",
     "@tesseract.js-data/kor": "1.0.0",
     "tesseract.js": "7.0.0",
     "tesseract.js-core": "7.0.0",
-    "wrangler": "4.159.0",
     "zxing-wasm": "3.1.6"
   }
 }

@@ -1,4 +1,4 @@
-// Expiry reminders as a calendar file (.ics) for builds without a push server: each usable
+// Expiry reminders as a calendar file (.ics): each usable
 // coupon becomes an all-day event on its expiry date with alarms at 9:00 three days before and
 // on the day. Importing again updates the same events (stable UIDs). Pure functions, no DOM.
 import { statusOf, isUsable, localDay } from './coupon.js';
