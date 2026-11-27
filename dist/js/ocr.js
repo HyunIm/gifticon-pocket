@@ -138,15 +138,23 @@ function linesOf(data, ratio = 1) {
   return lines;
 }
 
-// A line read with low confidence as Latin junk ("Q@e|AlY+A|I Zt DU") is swapped for the same row
-// from the other size when that one was read with confidence.
+// Each line of the main reading is checked against the same row of the other size:
+// - read with low confidence as Latin junk ("Q@e|AlY+A|I Zt DU"): the other row replaces it;
+// - the other row is the same text plus a short last word the main reading dropped (the size
+//   letter in "아메리카노 R"): that word is added back.
 const GARBLED = 50;
+const flat = text => text.replace(/\s/g, '');
 function patchGarbled(lines, others) {
   return lines.map(line => {
-    if (line.conf >= GARBLED) return line;
     const middle = line.y + line.h / 2;
     const twin = others.find(other => Math.abs(other.y + other.h / 2 - middle) < Math.max(line.h, other.h) / 2);
-    return twin && twin.conf >= 70 ? twin : line;
+    if (!twin) return line;
+    if (line.conf < GARBLED) return twin.conf >= 70 ? twin : line;
+    const extra = flat(twin.text).startsWith(flat(line.text)) ? twin.text.trim().split(/\s+/).pop() : '';
+    if (extra && extra.length <= 2 && flat(twin.text) === flat(line.text) + extra) {
+      return { ...line, text: `${line.text} ${extra}`, words: [...line.words, ...twin.words.slice(-1)] };
+    }
+    return line;
   });
 }
 
@@ -172,7 +180,7 @@ export async function readGifticon(blob, onProgress = () => {}, { targetWidth, e
       readBarcode(canvas),
     ]);
     let lines = linesOf(data);
-    if (fallback && lines.some(line => line.conf < GARBLED && /[가-힣]/.test(line.text) === false && line.text.length >= 6)) {
+    if (fallback) {
       const second = await worker.recognize(fallback.png, {}, { blocks: true, text: false });
       lines = patchGarbled(lines, linesOf(second.data, fallback.ratio));
     }

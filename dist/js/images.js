@@ -70,8 +70,8 @@ function withoutColour(source) {
 // Phone screenshots (~1080px wide) read best at their own size: downscaling saved under 10% of
 // the time but misread more product names. Only large photos are scaled down, tiny images up.
 // Small images (KakaoTalk gifticons are often 440px wide) come back in two sizes: 3x reads thin
-// Hangul cleanly (달콤, not 날콤) but now and then garbles a whole line, which 2x reads fine, so
-// ocr.js reads the 3x image and falls back to the 2x one line by line (`fallback`).
+// Hangul cleanly (달콤, not 날콤) but now and then garbles a line or drops a lone Latin letter
+// (아메리카노 R), which 2x keeps, so ocr.js reads both and patches the 3x lines (`fallback`).
 export async function prepareForReading(blob, targetWidth = 1280) {
   const bitmap = await createImageBitmap(blob);
   try {
