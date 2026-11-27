@@ -312,7 +312,8 @@ body.drop-ready::after{content:"이미지를 놓으면 등록돼요";position:fi
   .section-head h2{font-size:1.35rem}
   .filters{gap:5px}.filters button{padding:6px 12px;font-size:.84rem}
   /* Dialogs become bottom sheets: actions sit under the thumb. */
-  .coupon-dialog:not(.ask-dialog){width:100%;max-width:100%;margin:auto 0 0;max-height:calc(100dvh - env(safe-area-inset-top,0px) - 20px);border-radius:20px 20px 0 0}
+  /* --keyboard: how much of the screen the on-screen keyboard covers (iOS does not resize the page). */
+  .coupon-dialog:not(.ask-dialog){width:100%;max-width:100%;margin:auto 0 var(--keyboard,0px);max-height:calc(100dvh - env(safe-area-inset-top,0px) - 20px - var(--keyboard,0px));border-radius:20px 20px 0 0}
   .coupon-dialog:not(.ask-dialog)[open]{animation:sheet-up .22s cubic-bezier(.2,.8,.2,1)}
   .coupon-dialog .dialog-shell::before{content:"";display:block;width:38px;height:4px;border-radius:2px;background:var(--edge-strong);margin:-8px auto 12px}
   .dialog-shell{padding:18px 18px 20px}

@@ -1490,7 +1490,31 @@ function enableSwipeToClose() {
   dialog.addEventListener('touchcancel', end);
 }
 
+// iOS lays the keyboard over the page instead of resizing it, which hid the sheet's 등록하기
+// button while typing. The covered height becomes --keyboard and the sheet sits above it.
+// Browsers that resize the page for the keyboard (Android) report 0, so nothing changes there.
+function followKeyboard() {
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+  let last = 0;
+  const update = () => {
+    const covered = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+    // Small differences are toolbars appearing, not a keyboard.
+    const keyboard = covered > 80 ? covered : 0;
+    if (keyboard === last) return;
+    last = keyboard;
+    document.documentElement.style.setProperty('--keyboard', keyboard + 'px');
+  };
+  viewport.addEventListener('resize', update);
+  viewport.addEventListener('scroll', update);
+}
+
 function wireEvents() {
+  followKeyboard();
+  // Reloading or closing the tab mid-form would lose it; the browser asks first.
+  addEventListener('beforeunload', event => {
+    if (currentPage?.dirty) event.preventDefault();
+  });
   document.body.append(dialog, viewer, askDialog);
   // iOS Safari only applies :active (pressed look) when a touch listener exists.
   document.addEventListener('touchstart', () => {}, { passive: true });
