@@ -21,8 +21,12 @@ export function statusOf(record, today = localDay()) {
 }
 
 // "사용 가능" includes coupons that are about to expire.
+// usable and past are the phone tabs (보관함 / 지난); the rest are the desktop filter chips.
 export const matchesStatus = (filter, status) =>
-  filter === 'all' || status === filter || (filter === 'available' && status === 'expiring');
+  filter === 'all' || status === filter ||
+  ((filter === 'available' || filter === 'usable') && status === 'expiring') ||
+  (filter === 'usable' && status === 'available') ||
+  (filter === 'past' && (status === 'used' || status === 'expired'));
 
 export const isUsable = status => status === 'available' || status === 'expiring';
 
