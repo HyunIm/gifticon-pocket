@@ -1,85 +1,228 @@
+<div align="center">
+
+<img src="dist/icons/icon-192.png" width="88" alt="">
+
 # 기프티콘 포켓
 
-기프티콘 이미지를 올리면 브랜드·상품명·유효기간·쿠폰 번호를 자동으로 채우고, 만료가 가까운 쿠폰을 모아 볼 수 있는 한국어 웹앱입니다. 쿠폰 데이터는 브라우저의 IndexedDB에 저장됩니다.
+**기프티콘 이미지를 올리면 알아서 정리하고, 만료 전에 챙겨 주는 나만의 쿠폰 지갑**
 
-## 주요 기능
+[![Deploy](https://github.com/HyunIm/gifticon-pocket/actions/workflows/deploy.yml/badge.svg)](https://github.com/HyunIm/gifticon-pocket/actions/workflows/deploy.yml)
+[![Tests](https://github.com/HyunIm/gifticon-pocket/actions/workflows/test.yml/badge.svg)](https://github.com/HyunIm/gifticon-pocket/actions/workflows/test.yml)
+![PWA](https://img.shields.io/badge/PWA-설치_가능-5A0FC8?logo=pwa&logoColor=white)
+![Offline](https://img.shields.io/badge/오프라인-지원-2e8a57)
+![Privacy](https://img.shields.io/badge/쿠폰_데이터-기기에만_저장-302b38)
 
-- **이미지로 자동 등록**: 기프티콘 이미지를 고르면 기기 안에서 글자를 읽어 입력란을 채웁니다. 여러 장을 한 번에 고르면 하나씩 확인하거나 "남은 N장은 확인 없이 자동 등록"으로 한 번에 등록할 수 있고, 읽지 못했거나 이미 등록된 번호인 이미지만 다시 확인합니다. 이미지를 붙여 넣거나(Ctrl+V, 또는 등록 화면의 "붙여넣기": iPhone에서 카카오톡 이미지를 복사해 사진첩 저장 없이 등록) 끌어다 놓아도 되고, Android에서 앱을 설치하면 카카오톡 등의 공유 메뉴에서 바로 보낼 수 있습니다.
-- **만료 임박**: 유효기간이 7일 이내인 쿠폰을 모아 볼 수 있습니다. GitHub Pages에서는 앱 안에서 유효기간을 확인합니다. 백그라운드 푸시는 별도의 알림 서버가 있는 배포에서만 작동합니다.
-- **캘린더 알림**: 설정의 "캘린더 파일 받기"로 남은 쿠폰의 만료일을 캘린더 파일(.ics)로 받아 추가하면, 앱을 열지 않아도 만료 3일 전과 당일 오전 9시에 캘린더가 알려 줍니다. 다시 받아 추가하면 같은 쿠폰은 갱신됩니다.
-- **매장에서 보여 주기**: 상세 화면의 "쿠폰 보여주기"를 누르면 흰 배경 전체 화면에 쿠폰 이미지(이미지가 없으면 큰 번호)와 "사용 완료" 버튼이 나옵니다. 보여 주는 동안 화면이 꺼지지 않고, 사용 완료는 알림의 "실행 취소"로 되돌릴 수 있습니다.
-- **금액권**: 잔액을 기록하고, "사용 금액 입력"으로 쓴 만큼 차감합니다. 잔액이 0원이 되면 사용 완료로 바뀌고, 잔액이 남았는데 사용 완료를 누르면 한 번 확인합니다.
-- **밀어서 처리**: 목록에서 쿠폰을 오른쪽으로 밀면 사용 완료(사용한 쿠폰은 사용 취소) 버튼이, 왼쪽으로 밀면 삭제 버튼이 나타나고, 그 버튼을 눌러야 처리됩니다. 둘 다 알림의 "실행 취소"로 되돌릴 수 있습니다.
-- **여러 개 선택**: 쿠폰을 길게 누르면(PC는 오른쪽 클릭) 선택 모드가 되고, 다른 쿠폰을 눌러 더 고른 뒤 한 번에 사용 완료하거나 삭제할 수 있습니다.
-- **같은 브랜드 묶음**: 같은 브랜드의 쿠폰은 겹쳐 쌓인 카드로 보이고(+2), 누르면 펼쳐집니다. 쿠폰 보여주기 화면에서는 옆으로 밀어 같은 브랜드의 다음 쿠폰으로 넘어가고, 사용 완료하면 다음 쿠폰이 바로 나옵니다. 상세 화면도 옆으로 밀어 이전·다음 쿠폰을 볼 수 있습니다.
-- **유효기간 연장**: 만료됐거나 곧 만료되는 쿠폰은 상세 화면의 "연장했어요"로 새 날짜를 바로 기록할 수 있습니다.
-- **찾기**: 사용 가능한 쿠폰은 남은 날짜(D-12)를 보여 주고, 사용했거나 기간이 지난 쿠폰은 "지난 기프티콘"으로 접어 둡니다. 브랜드·상품명·메모·쿠폰 번호와 초성(ㅅㅌㅂㅅ)으로 검색할 수 있고, 필터와 정렬은 다음에도 유지됩니다.
-- **백업과 정리**: 설정에서 이미지까지 포함한 백업 파일을 저장하고 다른 기기에서 불러올 수 있습니다. 오래 백업하지 않으면 목록 위에서 알려 주고, 지난 기프티콘을 한 번에 지울 수 있습니다.
-- **오프라인**: 한 번 열고 나면 오프라인에서도 쿠폰을 보고 사용 처리할 수 있습니다. 이미지 읽기 도구도 처음 한 번 사용한 뒤에는 오프라인에서 동작합니다.
-- **하단 탭(휴대폰)**: 보관함·임박·지난·설정 탭과 등록 버튼이 화면 아래 반투명 유리 바에 있습니다. 탭을 누르면 선택 표시가 미끄러지며 목록이 바뀌고, 선택 표시를 손가락으로 끌어 다른 탭에 놓아도 됩니다. 지금 탭을 다시 누르면 맨 위로 올라갑니다.
-- **화면**: 다크 모드를 지원하고, 휴대폰에서는 창이 아래에서 올라오는 시트로 열립니다(아래로 끌어내리면 닫힘). PC에서는 `/`로 검색, `n`으로 등록할 수 있습니다. 확인 창도 앱 안의 시트로 뜨며, axe-core 접근성 검사에서 위반 항목이 없습니다.
+### [👉 앱 열기](https://hyunim.github.io/gifticon-pocket/)
 
-## 개인정보
+<img src="docs/screenshots/home-dark.webp" width="200" alt="목록 (다크 모드)">&nbsp;
+<img src="docs/screenshots/register-light.webp" width="200" alt="이미지로 자동 등록">&nbsp;
+<img src="docs/screenshots/viewer-light.webp" width="200" alt="매장에서 보여 주기">&nbsp;
+<img src="docs/screenshots/swipe-dark.webp" width="200" alt="밀어서 처리">
 
-- 기프티콘 이미지와 쿠폰 번호는 기기 밖으로 나가지 않습니다. 이미지 읽기도 기기 안에서 처리합니다.
-- GitHub Pages 버전에서는 쿠폰의 유효기간, 브랜드, 상품명도 기기에 보관합니다.
-- 기기 간 동기화는 하지 않습니다. 브라우저 데이터를 지우면 쿠폰도 지워지므로 백업 파일을 저장해 두세요.
+</div>
 
-## 홈 화면에서 사용하기
+---
 
-[기프티콘 포켓](https://hyunim.github.io/gifticon-pocket/)을 열고 상단의 **앱 설치**를 누릅니다. iPhone에서는 Safari의 공유 메뉴에서 **홈 화면에 추가**를 선택합니다.
+## ✨ 한눈에 보기
 
-Safari에서는 장기간 방문하지 않으면 사이트 데이터가 지워질 수 있습니다. iPhone에서는 홈 화면에 추가해서 사용하세요. 카카오톡 안의 브라우저로 열면 저장 공간이 따로라서, 앱이 다른 브라우저로 열도록 안내합니다.
-
-## 이미지 읽기의 동작 방식
-
-[Tesseract.js](https://github.com/naptha/tesseract.js) 7과 한국어·영어 모델(`best_int`)을 `dist/vendor/`에 함께 배포합니다. 처음 이미지를 읽을 때 약 7.6MB를 내려받고, 이후에는 서비스 워커가 보관합니다. 읽은 글자에서 유효기간, 쿠폰 번호, 브랜드(주요 브랜드 약 160개), 상품명, 금액권 잔액을 찾는 규칙은 `dist/js/parse.js`와 `dist/js/brands.js`에 있습니다. 쿠폰 번호는 바코드에서 먼저 읽습니다. 브라우저에 바코드 읽기 기능이 있으면(Android Chrome 등) 그것을 쓰고, 없으면(iPhone Safari 등) 함께 배포한 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm)(약 1MB, 처음 한 번 내려받은 뒤 오프라인 동작)으로 읽습니다. 글자를 읽기 전에는 색을 빼서 브랜드 이름 위의 형광펜 같은 색 표시가 글자를 가리지 않게 하고, 한 글자 틀리게 읽힌 브랜드 이름(꼽네치킨 → 굽네치킨)도 브랜드 목록에서 찾아 줍니다.
-
-자동으로 채운 값은 초록색으로 표시되며, 등록 전에 확인하고 고칠 수 있습니다.
-
-## 로컬 실행
-
-```sh
-npm run build
-python3 -m http.server 8787 --directory dist
+```mermaid
+flowchart LR
+    A["📸 기프티콘 이미지<br/>고르기·붙여넣기·공유"] --> B["🔍 기기 안에서 읽기<br/>브랜드·상품명·유효기간·번호"]
+    B --> C["👛 지갑에 보관<br/>D-day 순 정렬·브랜드 묶음"]
+    C --> D["⏰ 만료 전 알림<br/>앱 안 배너·캘린더·푸시"]
+    C --> E["🏪 매장에서 보여 주기<br/>전체 화면 바코드 → 사용 완료"]
 ```
 
-브라우저에서 http://localhost:8787 을 엽니다.
+| | 기능 | 한 줄 설명 |
+|:-:|---|---|
+| 📸 | **이미지로 자동 등록** | 이미지를 고르면 입력란이 채워져요. 여러 장은 한 번에, 카카오톡 이미지는 복사→붙여넣기로 |
+| 🔢 | **바코드로 번호 읽기** | 바코드에서 쿠폰 번호를 바로 읽어요(iPhone 포함). 글자 인식보다 정확해요 |
+| ⏰ | **만료 임박 챙기기** | 3일 안에 만료되면 맨 위에 알려 주고, 캘린더(.ics)로 받으면 앱을 안 열어도 알림이 와요 |
+| 🏪 | **매장에서 보여 주기** | 흰 배경 전체 화면 + 화면 꺼짐 방지. 같은 브랜드 여러 장은 옆으로 넘기며 연달아 사용 |
+| 👆 | **휴대폰 앱 같은 조작** | 밀어서 사용 완료·삭제, 길게 눌러 여러 개 선택, 유리 탭 바, 모든 동작 실행 취소 |
+| 💳 | **금액권 잔액** | 쓴 금액만큼 차감하고, 0원이 되면 자동으로 사용 완료 |
+| 🔎 | **찾기** | 브랜드·상품명·메모·번호·초성(ㅅㅌㅂㅅ) 검색, 카테고리·정렬 |
+| 🌙 | **테마** | 기기 설정 / 밝게 / 어둡게 |
+| 📴 | **오프라인** | 한 번 열면 인터넷 없이도 보고, 쓰고, 이미지도 읽어요 |
+| 💾 | **백업** | 이미지까지 담은 백업 파일로 다른 기기에 옮기기 |
 
-## 테스트
+## 👆 제스처 한눈에
 
-```sh
-npm test
+| 동작 | 결과 |
+|---|---|
+| 카드를 **오른쪽으로 밀기** | `사용 완료` 버튼이 나타나요 → 눌러야 처리 |
+| 카드를 **왼쪽으로 밀기** | `삭제` 버튼이 나타나요 → 눌러야 처리 |
+| 카드를 **길게 누르기** (PC: 오른쪽 클릭) | 선택 모드 → 여러 장 한 번에 사용 완료·삭제 |
+| **겹친 카드(+2)** 누르기 | 같은 브랜드 쿠폰 펼치기 |
+| 쿠폰 보여주기·상세에서 **옆으로 밀기** (PC: ←/→) | 다음·이전 쿠폰 |
+| 시트를 **아래로 끌기** | 닫기 |
+| 탭 바의 **선택 표시 끌기** | 다른 탭으로 이동 |
+
+> 모든 사용 완료·삭제는 아래 알림의 **실행 취소**로 되돌릴 수 있어요.
+
+## 📱 화면
+
+| 같은 브랜드 묶음 | 여러 개 선택 | 상세 | 설정 |
+|:-:|:-:|:-:|:-:|
+| <img src="docs/screenshots/stack-dark.webp" width="190" alt=""> | <img src="docs/screenshots/select-dark.webp" width="190" alt=""> | <img src="docs/screenshots/details-light.webp" width="190" alt=""> | <img src="docs/screenshots/settings-light.webp" width="190" alt=""> |
+
+<details>
+<summary>🖥️ PC 화면 보기</summary>
+
+<img src="docs/screenshots/desktop-light.webp" alt="PC 화면">
+
+PC에서는 `/`로 검색, `n`으로 등록할 수 있어요.
+</details>
+
+<sub>화면은 실제 앱을 데모 쿠폰으로 캡처한 것이에요. `npm run screenshots`로 다시 만들 수 있어요.</sub>
+
+## 🔍 이미지는 이렇게 읽어요
+
+모든 과정은 **기기 안에서** 일어나요. 이미지는 어디에도 전송되지 않아요.
+
+```mermaid
+flowchart TB
+    IMG["기프티콘 이미지"] --> PREP["준비<br/>· 작은 이미지는 3배·2배로 확대<br/>· 색을 빼서 형광펜·배경색 제거"]
+    PREP --> OCR["글자 인식<br/>Tesseract.js (한국어+영어)"]
+    PREP --> BAR["바코드 해독<br/>BarcodeDetector → 없으면 zxing-wasm"]
+    OCR --> FIX["줄 보정<br/>· 깨진 줄은 다른 배율로 교체<br/>· 쪼개진 줄 합치기"]
+    FIX --> PARSE["항목 찾기 (parse.js)<br/>유효기간 · 상품명 · 금액 · 번호"]
+    PARSE --> BRAND["브랜드 맞추기 (brands.js)<br/>165개 + 내가 등록한 브랜드<br/>한 글자 틀려도 자모로 근사 매칭"]
+    BAR -- "번호는 바코드 우선" --> FORM
+    BRAND --> FORM["입력란 자동 채움<br/>(초록색 = 자동, 등록 전 확인)"]
 ```
 
-실제 OCR 결과로 만든 기프티콘 19종의 인식 결과, 날짜 계산, 알림 일정, 백업, Web Push 암호화(RFC 8291 예제 값과 비교), 알림 서버 동작을 확인합니다.
+## 🧰 기술 스택
 
-## GitHub Pages 배포
+**앱** — 프레임워크·번들러 없이 브라우저 표준만 사용해요.
 
-게시는 `gh-pages` 브랜치의 `/(root)`를 사용합니다. **`main`에 push하거나 PR을 병합하면 자동으로 배포됩니다.** GitHub Actions(`.github/workflows/deploy.yml`)가 테스트를 돌리고, 오프라인 파일 목록(`dist/sw-manifest.js`, 저장소에는 넣지 않는 생성 파일)을 만든 뒤, `dist/`를 `gh-pages`에 올립니다. 테스트가 실패하면 배포하지 않습니다. 진행 상황은 저장소의 **Actions** 탭에서 볼 수 있고, 같은 화면의 **Run workflow**로 다시 배포할 수도 있습니다.
+![JavaScript](https://img.shields.io/badge/Vanilla_JS-ES_Modules-F7DF1E?logo=javascript&logoColor=black)
+![HTML5](https://img.shields.io/badge/HTML5-dialog·popover-E34F26?logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/CSS3-:has()·color--mix·backdrop--filter-1572B6?logo=css3&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-Service_Worker·Share_Target-5A0FC8?logo=pwa&logoColor=white)
+![IndexedDB](https://img.shields.io/badge/IndexedDB-로컬_저장-4479A1)
 
-수동으로 배포하려면 다음을 실행합니다. 자동 배포와 같은 스크립트(`scripts/publish-gh-pages.sh`)를 씁니다.
+**이미지 읽기**
 
-```sh
-npm run deploy
+![Tesseract.js](https://img.shields.io/badge/Tesseract.js-7.0-3C873A)
+![zxing-wasm](https://img.shields.io/badge/zxing--wasm-3.1.6-654FF0?logo=webassembly&logoColor=white)
+![BarcodeDetector](https://img.shields.io/badge/Shape_Detection-BarcodeDetector-4285F4?logo=googlechrome&logoColor=white)
+
+**배포·알림·품질**
+
+![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-호스팅-222222?logo=githubpages&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-자동_배포-2088FF?logo=githubactions&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-Durable_Objects-F38020?logo=cloudflare&logoColor=white)
+![Web Push](https://img.shields.io/badge/Web_Push-VAPID·RFC_8291-5A0FC8)
+![node:test](https://img.shields.io/badge/node:test-62_tests-339933?logo=nodedotjs&logoColor=white)
+![axe-core](https://img.shields.io/badge/axe--core-접근성_위반_0-663399)
+![Playwright](https://img.shields.io/badge/Playwright-E2E·캡처-2EAD33?logo=playwright&logoColor=white)
+
+## 🏗️ 구조
+
+```mermaid
+flowchart LR
+    subgraph Device["📱 내 기기 (브라우저)"]
+        UI["앱 화면<br/>dist/js/*.js"] <--> DB[("IndexedDB<br/>쿠폰·이미지")]
+        UI --> W["읽기 엔진<br/>Tesseract·zxing"]
+        SW["Service Worker<br/>오프라인 캐시"] -.-> UI
+    end
+    GH["GitHub Pages<br/>정적 파일"] --> SW
+    UI -. "선택: 유효기간·브랜드만" .-> CF["Cloudflare Worker<br/>+ Durable Object"]
+    CF -. "Web Push" .-> SW
 ```
 
-## 별도 푸시 서버를 사용하는 Cloudflare 배포
+- **GitHub Pages 버전**: 서버 없이 동작해요. 만료 알림은 앱 안 배너와 캘린더 파일로 받아요.
+- **Cloudflare 버전**(선택): 만료 3일 전·당일 오전 9시에 백그라운드 푸시를 보내요. 이때만 유효기간·브랜드·상품명을 서버에 보관하고, 쿠폰 번호와 이미지는 보내지 않아요.
+
+## 🔒 개인정보
+
+| | |
+|---|---|
+| 🖼️ 이미지·쿠폰 번호 | 기기 밖으로 나가지 않아요. 이미지 읽기도 기기 안에서 해요 |
+| 🔄 동기화 | 하지 않아요. 브라우저 데이터를 지우면 쿠폰도 지워지니 **백업 파일**을 저장해 두세요 |
+| 🍎 iPhone | Safari는 오래 안 쓰면 사이트 데이터를 지울 수 있어요. **홈 화면에 추가**해서 쓰세요 |
+| 💬 카카오톡 | 카카오톡 안의 브라우저는 저장 공간이 따로라서, 다른 브라우저로 열도록 안내해요 |
+
+## 📲 설치
+
+[앱](https://hyunim.github.io/gifticon-pocket/)을 열고 상단의 **앱 설치**를 누르세요. iPhone은 Safari 공유 메뉴 → **홈 화면에 추가**. Android는 설치 후 카카오톡 공유 메뉴에서 바로 보낼 수 있어요.
+
+## 🛠️ 개발
+
+```sh
+npm install          # 개발 도구 설치
+npm run build        # 오프라인 파일 목록 생성
+npx wrangler dev     # 또는: python3 -m http.server 8787 --directory dist
+```
+
+| 명령 | 하는 일 |
+|---|---|
+| `npm test` | 단위 테스트 62개 — OCR 결과 19종 인식, 날짜·알림 계산, 백업, Web Push 암호화(RFC 8291 예제 값), 알림 서버 |
+| `npm run build` | `dist/sw-manifest.js`(오프라인 파일 목록·무결성 해시) 생성 |
+| `npm run vendor` | Tesseract.js·zxing-wasm을 `dist/vendor/`로 복사 (버전을 바꾼 뒤) |
+| `npm run screenshots` | README 화면 캡처 다시 만들기 (Playwright 필요) |
+| `npm run deploy` | GitHub Pages 수동 배포 |
+| `npm run deploy:worker` | Cloudflare 배포 (푸시 알림 포함) |
+
+<details>
+<summary>📁 폴더 구조</summary>
+
+```
+dist/                  배포되는 앱 그대로 (빌드 단계 없음)
+├─ index.html · style.css · sw.js · manifest.webmanifest
+├─ js/
+│  ├─ app.js           화면·제스처·목록
+│  ├─ parse.js         OCR 글자 → 항목 (유효기간·번호·상품명)
+│  ├─ brands.js        브랜드 165개·근사 매칭·카테고리
+│  ├─ ocr.js           Tesseract·바코드 읽기, 2배율 보정
+│  ├─ images.js        축소·확대·색 제거·썸네일
+│  ├─ db.js            IndexedDB (Safari Blob 안전 저장)
+│  ├─ coupon.js        상태·D-day·정렬·검색
+│  ├─ calendar.js      .ics 캘린더 파일
+│  ├─ backup.js · reminders.js · push.js · install.js · dom.js
+└─ vendor/             Tesseract.js 7 · zxing-wasm (처음 쓸 때 내려받아 캐시)
+worker/                Cloudflare Worker + Durable Object (Web Push)
+scripts/               배포·오프라인 목록·엔진 복사·화면 캡처
+test/                  node:test 단위 테스트
+docs/screenshots/      README 화면
+```
+</details>
+
+## 🚀 배포
+
+```mermaid
+flowchart LR
+    PR["Pull Request"] -->|test.yml| T["테스트 + 빌드"]
+    T --> M["main 병합"]
+    M -->|deploy.yml| D["테스트 → 오프라인 목록 생성"]
+    D --> P["gh-pages 브랜치"]
+    P --> S["🌐 hyunim.github.io/gifticon-pocket"]
+    S --> U["열려 있는 앱:<br/>'새 버전이 준비됐어요'"]
+```
+
+`main`에 병합하면 자동으로 배포돼요. 테스트가 실패하면 배포하지 않고, 진행 상황은 **Actions** 탭에서 볼 수 있어요.
+
+<details>
+<summary>☁️ Cloudflare 배포 (백그라운드 푸시 알림)</summary>
 
 ```sh
 npx wrangler login
 npm run deploy:worker
 ```
 
-Wrangler가 `dist`를 Workers Static Assets로, `worker/index.js`를 Worker로 배포하고 `PushReminders` Durable Object를 만듭니다(무료 플랜에서 사용 가능한 SQLite 저장소). 배포 전에 앱 파일의 해시를 계산해 오프라인 캐시 버전을 자동으로 갱신합니다. 열려 있는 앱에는 "새 버전이 준비됐어요" 안내가 표시됩니다.
+`dist`는 Workers Static Assets로, `worker/index.js`는 Worker로 배포되고 `PushReminders` Durable Object(무료 플랜의 SQLite 저장소)를 만들어요. VAPID 키는 처음 요청할 때 자동으로 만들어 보관해요. 직접 관리하려면 `VAPID_PUBLIC_KEY`·`VAPID_PRIVATE_KEY`(base64url) 시크릿과 `VAPID_SUBJECT`(`mailto:`/`https:`) 변수를 설정하세요. 키를 바꾸면 기존 구독자는 알림을 다시 켜야 해요.
+</details>
 
-알림 서명용 VAPID 키는 처음 요청할 때 자동으로 만들어 Durable Object에 보관합니다. 직접 관리하려면 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`(base64url) 시크릿과 `VAPID_SUBJECT`(`mailto:` 또는 `https:` 주소) 변수를 설정합니다. 키를 바꾸면 기존 구독자는 알림을 다시 켜야 합니다.
+<details>
+<summary>🔄 이미지 읽기 엔진 업데이트</summary>
 
-## 이미지 읽기 도구 업데이트
-
-`package.json`의 `tesseract.js`, `tesseract.js-core`, `@tesseract.js-data/*`, `zxing-wasm` 버전을 바꾼 뒤 실행합니다.
+`package.json`의 `tesseract.js`·`tesseract.js-core`·`@tesseract.js-data/*`·`zxing-wasm` 버전을 바꾼 뒤:
 
 ```sh
 npm install
 npm run vendor
 ```
+
+엔진 폴더 이름에 버전이 들어가서, 바뀌면 사용자 기기의 캐시도 자동으로 새로 받아요.
+</details>

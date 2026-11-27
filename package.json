@@ -1,11 +1,18 @@
 {
   "name": "gifticon-pocket",
+  "description": "기프티콘 이미지를 올리면 자동으로 정리하고 만료 전에 챙겨 주는 쿠폰 지갑 PWA",
+  "homepage": "https://hyunim.github.io/gifticon-pocket/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HyunIm/gifticon-pocket.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/refresh-offline-cache.mjs",
     "vendor": "node scripts/vendor-tesseract.mjs && node scripts/vendor-zxing.mjs && node scripts/refresh-offline-cache.mjs",
     "test": "node --test test/*.test.js",
+    "screenshots": "node scripts/screenshots.mjs",
     "dev": "wrangler dev",
     "deploy": "npm run build && bash scripts/publish-gh-pages.sh",
     "deploy:worker": "wrangler deploy"
