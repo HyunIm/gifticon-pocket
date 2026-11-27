@@ -48,6 +48,25 @@ export async function shrinkForStorage(blob, { maxBytes = 1.5 * 1048576, maxWidt
   }
 }
 
+// Grey from the brightest of R, G and B: dark text stays dark, but coloured marks behind it
+// (a blue highlighter under "굽네치킨", a brand-coloured band) turn light instead of mid-grey,
+// so Tesseract no longer reads the mark as part of the letters.
+function withoutColour(source) {
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d');
+  context.drawImage(source, 0, 0);
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const px = image.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const v = Math.max(px[i], px[i + 1], px[i + 2]);
+    px[i] = px[i + 1] = px[i + 2] = v;
+  }
+  context.putImageData(image, 0, 0);
+  return canvas;
+}
+
 // Phone screenshots (~1080px wide) read best at their own size: downscaling saved under 10% of
 // the time but misread more product names. Only large photos are scaled down, tiny images up.
 export async function prepareForReading(blob, targetWidth = 1280) {
@@ -58,7 +77,8 @@ export async function prepareForReading(blob, targetWidth = 1280) {
     else if (bitmap.width < 600) scale = Math.min(2, targetWidth / bitmap.width);
     if (bitmap.height * scale > 4000) scale = 4000 / bitmap.height;
     const canvas = drawScaled(bitmap, Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
-    return { canvas, png: await canvasToBlob(canvas, 'image/png') };
+    // The barcode reader gets the colour image; text recognition gets highlighter-free grey.
+    return { canvas, png: await canvasToBlob(withoutColour(canvas), 'image/png') };
   } finally {
     bitmap.close();
   }

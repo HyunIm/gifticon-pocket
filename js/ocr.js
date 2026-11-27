@@ -1,11 +1,13 @@
-// Reads a gifticon image on the device: Tesseract for text, BarcodeDetector for the number when
-// the browser has it. Nothing leaves the device. The engine (~6MB) loads on first use and the
+// Reads a gifticon image on the device: Tesseract for text, the barcode (BarcodeDetector, or zxing
+// where the browser has none) for the number. Nothing leaves the device. The engine (~6MB) loads on first use and the
 // service worker keeps it for offline use.
 import { parseGifticon } from './parse.js';
 import { prepareForReading } from './images.js';
 
 const VERSION = '7.0.0';
 const base = new URL(`../vendor/tesseract-${VERSION}/`, import.meta.url).href;
+const ZXING_VERSION = '3.1.6';
+const zxingBase = new URL(`../vendor/zxing-wasm-${ZXING_VERSION}/`, import.meta.url).href;
 const IDLE_MS = 60000;
 
 let workerPromise;
@@ -72,18 +74,56 @@ function scheduleIdle() {
   }, IDLE_MS);
 }
 
-async function readBarcode(canvas) {
+// The longest all-digit value among the barcodes found: the coupon number.
+const bestNumber = values => values.map(v => v.replace(/[\s-]/g, '')).filter(v => /^\d{8,24}$/.test(v))
+  .sort((a, b) => b.length - a.length)[0] || '';
+
+async function detectNative(canvas) {
   if (!('BarcodeDetector' in window)) return '';
   try {
     const formats = await window.BarcodeDetector.getSupportedFormats();
     const wanted = ['code_128', 'ean_13', 'itf', 'code_39', 'qr_code', 'pdf417', 'data_matrix'].filter(f => formats.includes(f));
     if (!wanted.length) return '';
     const codes = await new window.BarcodeDetector({ formats: wanted }).detect(canvas);
-    const numeric = codes.map(c => c.rawValue.replace(/[\s-]/g, '')).filter(v => /^\d{8,24}$/.test(v));
-    return numeric.sort((a, b) => b.length - a.length)[0] || '';
+    return bestNumber(codes.map(c => c.rawValue));
   } catch {
     return '';
   }
+}
+
+// zxing (WebAssembly, ~1MB, loaded on first use) where the browser has no barcode reader of its
+// own, which includes iPhone Safari. The barcode is far more reliable than reading its caption.
+let zxingPromise;
+function getZxing() {
+  if (!zxingPromise) {
+    zxingPromise = import(zxingBase + 'reader/index.js').then(zxing => {
+      zxing.prepareZXingModule({
+        overrides: { locateFile: (path, prefix) => (path.endsWith('.wasm') ? zxingBase + path : prefix + path) },
+      });
+      return zxing;
+    });
+    zxingPromise.catch(() => { zxingPromise = null; });
+  }
+  return zxingPromise;
+}
+
+async function detectZxing(canvas) {
+  try {
+    const zxing = await getZxing();
+    const image = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const codes = await zxing.readBarcodes(image, {
+      formats: ['Code128', 'EAN-13', 'ITF', 'Code39', 'QRCode', 'PDF417', 'DataMatrix'],
+      tryHarder: true,
+      maxNumberOfSymbols: 4,
+    });
+    return bestNumber(codes.filter(code => code.isValid).map(code => code.text));
+  } catch {
+    return '';
+  }
+}
+
+async function readBarcode(canvas) {
+  return (await detectNative(canvas)) || detectZxing(canvas);
 }
 
 export class ReadError extends Error {}
@@ -109,7 +149,10 @@ export async function readGifticon(blob, onProgress = () => {}, { targetWidth, e
     ]);
     const lines = [];
     for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
-      lines.push({ text: line.text.trim(), h: line.bbox.y1 - line.bbox.y0, y: line.bbox.y0, conf: line.confidence });
+      lines.push({
+        text: line.text.trim(), h: line.bbox.y1 - line.bbox.y0, y: line.bbox.y0, conf: line.confidence,
+        words: (line.words || []).map(word => ({ text: word.text, x0: word.bbox.x0 })),
+      });
     }
     const fields = parseGifticon(lines, { extraBrands });
     if (barcode) fields.code = barcode.replace(/(\d{4})(?=\d)/g, '$1 ');
@@ -125,4 +168,5 @@ export async function readGifticon(blob, onProgress = () => {}, { targetWidth, e
 // Starts downloading the engine while the user is still picking a file.
 export function warmUp() {
   getWorker().then(scheduleIdle, () => {});
+  if (!('BarcodeDetector' in window)) getZxing().catch(() => {});
 }
