@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/refresh-offline-cache.mjs",
-    "vendor": "node scripts/vendor-tesseract.mjs && node scripts/refresh-offline-cache.mjs",
+    "vendor": "node scripts/vendor-tesseract.mjs && node scripts/vendor-zxing.mjs && node scripts/refresh-offline-cache.mjs",
     "test": "node --test test/*.test.js",
     "dev": "wrangler dev",
     "deploy": "npm run build && bash scripts/publish-gh-pages.sh",
@@ -15,6 +15,7 @@
     "@tesseract.js-data/kor": "1.0.0",
     "tesseract.js": "7.0.0",
     "tesseract.js-core": "7.0.0",
-    "wrangler": "4.159.0"
+    "wrangler": "4.159.0",
+    "zxing-wasm": "3.1.6"
   }
 }
