@@ -87,6 +87,23 @@ test('a product name wrapped onto two lines is joined', () => {
   assert.equal(parseGifticon(atSpace).name, '떠먹는 스트로베리 초콜릿 생크림');
 });
 
+test('expiry printed without a year takes the coming occurrence', () => {
+  const today = new Date(2026, 10, 27);
+  assert.equal(parseGifticon(['유효기간 12월 31일까지'], { today }).expiry, '2026-12-31');
+  assert.equal(parseGifticon(['유효기간 ~ 02/14'], { today }).expiry, '2027-02-14', 'already past this year: next year');
+  assert.equal(parseGifticon(['유효기간 11.10'], { today }).expiry, '2026-11-10', 'a few weeks ago stays this year');
+  assert.equal(parseGifticon(['상품 1.25L', '아메리카노 12.31'], { today }).expiry, '', 'only next to an expiry label');
+  assert.equal(parseGifticon(['유효기간 2027.01.05', '12월 31일'], { today }).expiry, '2027-01-05', 'a full date wins');
+});
+
+test('coupon codes with letters', () => {
+  assert.equal(parseGifticon(['구글플레이 기프트코드', 'PIN 번호', 'AB12-CD34-EF56-GH78']).code, 'AB12-CD34-EF56-GH78');
+  assert.equal(parseGifticon(['쿠폰번호 xy9k 2m4p 7q8r']).code, 'XY9K-2M4P-7Q8R');
+  assert.equal(parseGifticon(['쿠폰번호 1234 5678 9012']).code, '1234 5678 9012', 'digit-only codes stay as they were');
+  assert.equal(parseGifticon(['GS25 CU EMART 상품']).code, '', 'words are not codes');
+  assert.equal(parseGifticon(['주문번호 OD26-1124-AB19']).code, '', 'order numbers are not coupon codes');
+});
+
 test('nothing recognisable gives empty fields', () => {
   assert.deepEqual(parseGifticon(['', '!!!']), { brand: '', name: '', expiry: '', code: '', balance: null, category: '기타' });
 });
