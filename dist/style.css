@@ -141,8 +141,21 @@ main.wrap{padding-top:32px}
 .swipe-back svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.3,1.4,.45,1)}
 .swipe-back[data-side=delete]{flex-direction:row-reverse}
 .swipe-back.armed[data-side=use]{background:var(--ok-fg);color:var(--surface)}
-.swipe-back.armed[data-side=delete]{background:var(--danger-fg);color:var(--surface)}
+.swipe-back[data-side=delete]{justify-content:flex-start;padding:0;background:#d23f37;color:#fff;overflow:hidden}
+.swipe-delete{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:100%;color:#fff;font-weight:800;font-size:.875rem}
+.swipe-delete:focus-visible{outline:3px solid #fff;outline-offset:-6px}
 .swipe-back.armed svg{transform:scale(1.2)}
+/* Same-brand coupons as a pile: two cards peek out underneath, a +N tells how many. */
+.coupon-stack{position:relative;display:grid;padding-bottom:14px;min-width:0}
+.coupon-stack::before,.coupon-stack::after{content:"";position:absolute;bottom:7px;left:12px;right:12px;height:48px;border:1px solid var(--edge);border-radius:16px;background:var(--surface);box-shadow:0 2px 6px var(--shadow)}
+.coupon-stack::after{bottom:0;left:26px;right:26px;opacity:.75}
+.stack-count{position:absolute;z-index:2;right:16px;bottom:2px;min-width:30px;height:24px;padding:0 9px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-size:.8125rem;font-weight:800;line-height:24px;text-align:center;pointer-events:none}
+.stack-head{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 2px -6px}
+.stack-head strong{display:flex;align-items:baseline;gap:8px;font-size:1rem}
+.stack-head strong span{color:var(--muted);font-size:.875rem;font-weight:600}
+.stack-fold{min-height:44px;padding:6px 12px}
+@keyframes fan-in{from{opacity:0;transform:translateY(-22px) scale(.96)}}
+.coupon-card.fan-in{animation:fan-in .32s cubic-bezier(.2,.8,.2,1)}
 /* Selecting several: picked cards get an outline and a check; a bar offers what to do with them. */
 .selecting .coupon-card{transition:transform .15s}
 .selecting .coupon-card::after{content:"";position:absolute;top:12px;left:12px;width:24px;height:24px;border-radius:50%;border:2px solid var(--edge-strong);background:var(--surface);box-sizing:border-box}

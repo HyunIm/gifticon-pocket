@@ -110,6 +110,7 @@ function badge(record, today) {
 }
 
 function render() {
+  closeSwipe(false);
   const today = localDay();
   const query = $('#search').value;
   const category = $('#category').value;
@@ -172,13 +173,76 @@ function updateList(list, next) {
 function withPastFolded(shown, today) {
   const nodes = shown.map(record => cardFor(record, today));
   if ($('#sort').value === 'brand') return withBrandGroups(shown, nodes);
-  if (filter !== 'all' || $('#sort').value !== 'expiry') return nodes;
+  if (filter !== 'all' || $('#sort').value !== 'expiry') return stackBrands(shown, nodes, today);
   const firstPast = shown.findIndex(record => !isUsable(statusOf(record, today)));
-  if (firstPast <= 0) return nodes;
+  if (firstPast <= 0) return stackBrands(shown, nodes, today);
   const past = shown.length - firstPast;
   pastToggle.setAttribute('aria-expanded', String(showPast));
   pastToggle.replaceChildren(el('span', '', `지난 기프티콘 ${past}개`), el('span', 'past-hint', showPast ? '접기' : '사용 완료·기간 만료 보기'), icon('down'));
-  return [...nodes.slice(0, firstPast), pastToggle, ...(showPast ? nodes.slice(firstPast) : [])];
+  return [...stackBrands(shown.slice(0, firstPast), nodes.slice(0, firstPast), today), pastToggle, ...(showPast ? nodes.slice(firstPast) : [])];
+}
+
+// Usable coupons of one brand pile up as a stack at the place of the one expiring first (+2 on
+// it); a tap fans the pile out under a "스타벅스 3장 · 접기" heading. Not while searching or in
+// the 브랜드순 / 지난 / 임박 views, where every coupon should be visible.
+const stackOpen = new Set();
+const stackNodes = new Map();
+function stackBrands(shown, nodes, today) {
+  if ($('#search').value.trim() || !['all', 'usable', 'available'].includes(filter)) return nodes;
+  const groups = new Map();
+  shown.forEach((record, i) => {
+    if (!isUsable(statusOf(record, today))) return;
+    if (!groups.has(record.brand)) groups.set(record.brand, []);
+    groups.get(record.brand).push(i);
+  });
+  const out = [];
+  shown.forEach((record, i) => {
+    const group = isUsable(statusOf(record, today)) ? groups.get(record.brand) : null;
+    if (!group || group.length < 2) { out.push(nodes[i]); return; }
+    if (group[0] !== i) return;
+    const cardsOf = group.map(index => nodes[index]);
+    if (stackOpen.has(record.brand)) out.push(stackHead(record.brand, group.length), ...cardsOf);
+    else out.push(stackPile(record.brand, cardsOf));
+  });
+  return out;
+}
+
+function stackPile(brand, cardsOf) {
+  const key = 'pile:' + brand;
+  let pile = stackNodes.get(key);
+  if (!pile) {
+    pile = el('div', 'coupon-stack');
+    pile.dataset.brand = brand;
+    stackNodes.set(key, pile);
+  }
+  const count = `+${cardsOf.length - 1}`;
+  if (pile.firstChild !== cardsOf[0] || pile.dataset.count !== count) {
+    const badge = el('span', 'stack-count', count);
+    badge.append(el('span', 'visually-hidden', `, ${brand} 쿠폰 ${cardsOf.length}장. 눌러서 모두 보기`));
+    pile.replaceChildren(cardsOf[0], badge);
+    pile.dataset.count = count;
+  }
+  return pile;
+}
+
+function stackHead(brand, count) {
+  const key = 'head:' + brand;
+  let head = stackNodes.get(key);
+  if (!head) {
+    head = el('div', 'stack-head');
+    stackNodes.set(key, head);
+  }
+  const label = `${count}장`;
+  if (head.dataset.label !== label) {
+    const title = el('strong', '', brand);
+    title.append(el('span', '', label));
+    head.replaceChildren(title, button('접기', 'button-ghost stack-fold', () => {
+      stackOpen.delete(brand);
+      render();
+    }));
+    head.dataset.label = label;
+  }
+  return head;
 }
 
 // One toggle node for the life of the page, so re-renders do not replace it.
@@ -1337,6 +1401,7 @@ function flyToPast(captures) {
   if (calm() || !phone.matches || !tab?.offsetWidth) return;
   const target = tab.getBoundingClientRect();
   const flights = captures.filter(Boolean).map(({ clone, rect }) => {
+    clone.classList.remove('selected', 'swiping');
     clone.classList.add('flying');
     Object.assign(clone.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
     document.body.append(clone);
@@ -1506,7 +1571,23 @@ async function quickDelete(record) {
 
 // One backdrop for the card being dragged, placed behind it: what letting go will do.
 const swipeBack = el('div', 'swipe-back');
-swipeBack.setAttribute('aria-hidden', 'true');
+// Swiping left only uncovers a 삭제 button (OPEN px wide); deleting takes a tap on it.
+const OPEN = 96;
+let openSwipe = null;
+function closeSwipe(animate = true) {
+  if (!openSwipe) return;
+  const { card } = openSwipe;
+  openSwipe = null;
+  if (animate) {
+    card.classList.add('swipe-return');
+    setTimeout(() => card.classList.remove('swipe-return'), 250);
+  }
+  card.style.transform = '';
+  card.classList.remove('swiping');
+  swipeBack.remove();
+  swipeBack.classList.remove('armed');
+  delete swipeBack.dataset.side;
+}
 
 /* ---------- select several: long-press a card, then tap others; act on all at once ---------- */
 
@@ -1665,9 +1746,20 @@ function wireSwipe() {
     swipeBack.classList.remove('armed');
     delete swipeBack.dataset.side;
   };
+  // With a 삭제 button showing, any other touch just closes it (and does nothing else).
+  document.addEventListener('pointerdown', event => {
+    if (!openSwipe || swipeBack.contains(event.target)) return;
+    closeSwipe();
+    if (list.contains(event.target)) {
+      suppressClick = true;
+      const release = () => setTimeout(() => { suppressClick = false; }, 0);
+      addEventListener('pointerup', release, { once: true, capture: true });
+    }
+    event.stopPropagation();
+  }, true);
   list.addEventListener('pointerdown', event => {
     const card = event.target.closest('.coupon-card');
-    if (!card || event.button > 0 || drag) return;
+    if (!card || event.button > 0 || drag || suppressClick) return;
     drag = { card, id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, state: 'pending', armed: false };
     // Holding a card still starts selecting (or adds it while selecting).
     clearTimeout(pressTimer);
@@ -1692,23 +1784,42 @@ function wireSwipe() {
       list.setPointerCapture(event.pointerId);
       drag.card.classList.add('swiping');
       const { card } = drag;
-      Object.assign(swipeBack.style, { top: `${card.offsetTop}px`, left: `${card.offsetLeft}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
+      const listBox = list.getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect();
+      Object.assign(swipeBack.style, { top: `${cardBox.top - listBox.top}px`, left: `${cardBox.left - listBox.left}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
       list.append(swipeBack);
     }
     const width = drag.card.offsetWidth;
-    const limit = Math.min(130, width * 0.35);
-    // Past the point of no return the card follows the finger more slowly.
-    const shown = Math.abs(dx) <= limit ? dx : Math.sign(dx) * (limit + (Math.abs(dx) - limit) * 0.45);
+    // Right: past `limit` letting go marks it used. Left: the card stops at the 삭제 button.
+    const limit = dx > 0 ? Math.min(130, width * 0.35) : OPEN;
+    // Past the limit the card follows the finger more slowly.
+    const shown = Math.abs(dx) <= limit ? dx : Math.sign(dx) * (limit + (Math.abs(dx) - limit) * (dx > 0 ? 0.45 : 0.2));
     drag.dx = dx;
     drag.card.style.transform = `translateX(${shown}px)`;
     const side = dx > 0 ? 'use' : 'delete';
     if (swipeBack.dataset.side !== side) {
       swipeBack.dataset.side = side;
-      const undo = side === 'use' && drag.record.used;
-      swipeBack.replaceChildren(icon(side === 'delete' ? 'trash' : undo ? 'undo' : 'check'),
-        el('span', '', side === 'delete' ? '삭제' : undo ? '사용 취소' : '사용 완료'));
+      if (side === 'delete') {
+        const record = drag.record;
+        const remove = button('', 'swipe-delete', async () => {
+          const card = openSwipe?.card;
+          openSwipe = null;
+          if (card) {
+            card.classList.add('swipe-return');
+            card.style.transform = `translateX(-${card.offsetWidth + 40}px)`;
+            await new Promise(resolve => setTimeout(resolve, 180));
+          }
+          if (!(await quickDelete(record)) && card) { card.style.transform = ''; swipeBack.remove(); }
+        });
+        remove.append(icon('trash'), el('span', '', '삭제'));
+        remove.style.width = `${OPEN}px`;
+        swipeBack.replaceChildren(remove);
+      } else {
+        const undo = drag.record.used;
+        swipeBack.replaceChildren(icon(undo ? 'undo' : 'check'), el('span', '', undo ? '사용 취소' : '사용 완료'));
+      }
     }
-    const armed = Math.abs(dx) >= limit;
+    const armed = dx > 0 && Math.abs(dx) >= limit;
     if (armed !== drag.armed) {
       drag.armed = armed;
       swipeBack.classList.toggle('armed', armed);
@@ -1724,6 +1835,15 @@ function wireSwipe() {
     if (state !== 'swiping') return;
     suppressClick = true;
     setTimeout(() => { suppressClick = false; }, 0);
+    if (dx < 0 && dx <= -OPEN / 2 && event.type !== 'pointercancel') {
+      // Stay open on the 삭제 button until it is tapped or the user touches anything else.
+      card.classList.add('swipe-return');
+      card.style.transform = `translateX(-${OPEN}px)`;
+      setTimeout(() => card.classList.remove('swipe-return'), 250);
+      openSwipe = { card, record };
+      swipeBack.querySelector('.swipe-delete')?.focus({ preventScroll: true });
+      return;
+    }
     if (!armed || event.type === 'pointercancel') {
       card.classList.add('swipe-return');
       reset(card);
@@ -1733,7 +1853,7 @@ function wireSwipe() {
     card.classList.add('swipe-return');
     card.style.transform = `translateX(${Math.sign(dx) * (card.offsetWidth + 40)}px)`;
     await new Promise(resolve => setTimeout(resolve, 200));
-    const done = dx > 0 ? await quickToggleUsed(record) : await quickDelete(record);
+    const done = await quickToggleUsed(record);
     card.classList.remove('swipe-return');
     reset(card);
     if (!done) {
@@ -1749,7 +1869,19 @@ function wireSwipe() {
     const card = event.target.closest('.coupon-card');
     if (!card) return;
     if (suppressClick) { event.stopPropagation(); event.preventDefault(); return; }
-    if (selecting) { event.stopPropagation(); event.preventDefault(); toggleSelected(card.dataset.id); }
+    if (selecting) { event.stopPropagation(); event.preventDefault(); toggleSelected(card.dataset.id); return; }
+    const pile = card.closest('.coupon-stack');
+    if (pile) {
+      event.stopPropagation();
+      event.preventDefault();
+      stackOpen.add(pile.dataset.brand);
+      render();
+      for (const node of all(`#coupon-list .coupon-card`)) {
+        const record = records.find(item => item.id === node.dataset.id);
+        if (record?.brand === pile.dataset.brand) node.classList.add('fan-in');
+      }
+      setTimeout(() => all('#coupon-list .fan-in').forEach(node => node.classList.remove('fan-in')), 400);
+    }
   }, true);
   // Right-click (desktop) also starts selecting.
   list.addEventListener('contextmenu', event => {
@@ -1759,6 +1891,7 @@ function wireSwipe() {
     if (selecting) toggleSelected(card.dataset.id); else startSelecting(card.dataset.id);
   });
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && openSwipe) { closeSwipe(); return; }
     if (event.key === 'Escape' && selecting && !dialog.open && !viewer.open) stopSelecting();
   });
 }
