@@ -41,7 +41,7 @@
 }
 *{box-sizing:border-box}
 /* The list re-renders by swapping nodes; scroll anchoring would then jump the page. */
-html{overflow-anchor:none}
+html{overflow-anchor:none;overflow-x:clip}
 /* Korean wraps between words (사라져요, not 사라/져요); long codes still break where they must. */
 body{margin:0;line-height:1.5;word-break:keep-all;overflow-wrap:break-word;background:var(--bg);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -132,7 +132,17 @@ main.wrap{padding-top:32px}
 .filters button[aria-pressed=true]{background:var(--chip-on);border-color:var(--chip-on);color:var(--on-primary)}
 
 /* list */
-#coupon-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#coupon-list{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+/* Swipe a card: it slides over a backdrop that says what letting go will do. */
+.coupon-card{position:relative;z-index:1;touch-action:pan-y}
+.coupon-card.swiping{background:var(--surface)!important;box-shadow:0 6px 18px var(--shadow)}
+.coupon-card.swipe-return{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.swipe-back{position:absolute;z-index:0;display:flex;align-items:center;gap:8px;padding:0 24px;border-radius:16px;font-weight:800;font-size:.9375rem;color:var(--muted);background:var(--surface-2);transition:background .15s,color .15s}
+.swipe-back svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.3,1.4,.45,1)}
+.swipe-back[data-side=delete]{flex-direction:row-reverse}
+.swipe-back.armed[data-side=use]{background:var(--ok-fg);color:var(--surface)}
+.swipe-back.armed[data-side=delete]{background:var(--danger-fg);color:var(--surface)}
+.swipe-back.armed svg{transform:scale(1.2)}
 .coupon-card{background:var(--surface);border:1px solid var(--edge);border-radius:16px;display:flex;gap:15px;align-items:center;text-align:left;padding:15px;min-width:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .coupon-card:active{background:var(--tint)}
 .coupon-image{display:grid;place-items:center;width:72px;height:75px;flex-shrink:0;border-radius:11px;background:var(--lilac-bg);font-size:1.6rem;font-weight:700;color:var(--lilac-fg);overflow:hidden}
