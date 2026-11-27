@@ -1,0 +1,26 @@
+# Pull requests are tested before they can be merged and deployed.
+name: Test
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Tests use only Node itself; no npm install needed.
+      - name: Test
+        run: npm test
+
+      # The offline file list (dist/sw-manifest.js) is generated at deploy; make sure it builds.
+      - name: Build offline file list
+        run: npm run build

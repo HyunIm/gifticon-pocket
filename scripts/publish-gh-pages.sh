@@ -12,6 +12,7 @@ work="$(mktemp -d)"
 cleanup() {
   git worktree remove --force "$work" >/dev/null 2>&1 || true
   rm -rf "$work"
+  git branch -D "publish-$$" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -20,7 +21,7 @@ if git fetch --quiet --depth=1 "$remote" "$branch" 2>/dev/null; then
 else
   # First deploy: start the branch with no history from main.
   git worktree add --quiet --detach "$work"
-  git -C "$work" checkout --quiet --orphan "$branch"
+  git -C "$work" checkout --quiet --orphan "publish-$$"
 fi
 
 # Mirror dist/: files removed from dist/ also disappear from the site.

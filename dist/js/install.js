@@ -120,8 +120,23 @@ async function registerServiceWorker(isBusy) {
       worker.postMessage({ type: 'skip-waiting' });
     }, true]]);
   };
+  // sw.js?v=<revision>: every deploy changes the script URL, so every browser sees a new version.
+  // Offline (or before a build) the registered worker simply stays.
+  const register = async () => {
+    try {
+      const text = await (await fetch(new URL('sw-manifest.js', home), { cache: 'no-store' })).text();
+      const revision = /"revision":\s*"([\w-]+)"/.exec(text)?.[1];
+      if (!revision) return null;
+      const url = new URL('sw.js', home);
+      url.searchParams.set('v', revision);
+      return await navigator.serviceWorker.register(url);
+    } catch {
+      return navigator.serviceWorker.getRegistration(home.href);
+    }
+  };
   try {
-    const reg = await navigator.serviceWorker.register(new URL('sw.js', home));
+    const reg = await register();
+    if (!reg) return;
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const worker = reg.installing;
@@ -130,7 +145,7 @@ async function registerServiceWorker(isBusy) {
       });
     });
     // Installed apps can stay open for days; look for a new version whenever they come back.
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) register().catch(() => {}); });
   } catch (error) {
     console.warn('오프라인 사용 준비에 실패했습니다.', error);
   }
