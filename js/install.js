@@ -1,9 +1,10 @@
 // Everything about running as an installed app: install prompts, in-app browser warnings,
 // service worker registration and updates, and the offline notice.
 import { $, el, showBanner } from './dom.js';
-import { isStandalone, hasPushBackend } from './push.js';
+
 
 const home = new URL('../', import.meta.url);
+export const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const agent = navigator.userAgent;
 const isAppleMobile = /iPad|iPhone|iPod/.test(agent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isAndroid = /Android/.test(agent);
@@ -88,9 +89,7 @@ function suggestHomeScreen() {
   const dismissed = Number(store.get(IOS_DISMISS_KEY) || 0);
   if (Date.now() - dismissed < 14 * 86400000) return;
   // Safari erases site data after 7 days without a visit; home screen apps are exempt.
-  showBanner('ios', hasPushBackend
-    ? 'iPhone에서는 홈 화면에 추가해야 쿠폰이 지워지지 않고 만료 알림도 받을 수 있어요.'
-    : 'iPhone에서는 홈 화면에 추가해야 쿠폰이 지워지지 않고 앱처럼 바로 열 수 있어요.', [
+  showBanner('ios', 'iPhone에서는 홈 화면에 추가해야 쿠폰이 지워지지 않고 앱처럼 바로 열 수 있어요.', [
     ['추가 방법', () => openInstallGuide(), true],
     ['닫기', banner => { store.set(IOS_DISMISS_KEY, String(Date.now())); banner.remove(); }],
   ]);
