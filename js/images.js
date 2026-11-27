@@ -69,16 +69,26 @@ function withoutColour(source) {
 
 // Phone screenshots (~1080px wide) read best at their own size: downscaling saved under 10% of
 // the time but misread more product names. Only large photos are scaled down, tiny images up.
+// Small images (KakaoTalk gifticons are often 440px wide) come back in two sizes: 3x reads thin
+// Hangul cleanly (달콤, not 날콤) but now and then garbles a line or drops a lone Latin letter
+// (아메리카노 R), which 2x keeps, so ocr.js reads both and patches the 3x lines (`fallback`).
 export async function prepareForReading(blob, targetWidth = 1280) {
   const bitmap = await createImageBitmap(blob);
   try {
     let scale = 1;
+    const small = bitmap.width < 600;
     if (bitmap.width > targetWidth) scale = targetWidth / bitmap.width;
-    else if (bitmap.width < 600) scale = Math.min(2, targetWidth / bitmap.width);
+    else if (small) scale = Math.min(3, Math.max(targetWidth, 1320) / bitmap.width);
     if (bitmap.height * scale > 4000) scale = 4000 / bitmap.height;
     const canvas = drawScaled(bitmap, Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
     // The barcode reader gets the colour image; text recognition gets highlighter-free grey.
-    return { canvas, png: await canvasToBlob(withoutColour(canvas), 'image/png') };
+    const result = { canvas, png: await canvasToBlob(withoutColour(canvas), 'image/png') };
+    const lower = Math.min(2, scale);
+    if (small && lower < scale - 0.25) {
+      const other = drawScaled(bitmap, Math.round(bitmap.width * lower), Math.round(bitmap.height * lower));
+      result.fallback = { png: await canvasToBlob(withoutColour(other), 'image/png'), ratio: scale / lower };
+    }
+    return result;
   } finally {
     bitmap.close();
   }
