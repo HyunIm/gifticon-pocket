@@ -141,8 +141,32 @@ main.wrap{padding-top:32px}
 .swipe-back svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.3,1.4,.45,1)}
 .swipe-back[data-side=delete]{flex-direction:row-reverse}
 .swipe-back.armed[data-side=use]{background:var(--ok-fg);color:var(--surface)}
-.swipe-back.armed[data-side=delete]{background:var(--danger-fg);color:var(--surface)}
+.swipe-back[data-side=delete]{justify-content:flex-start;padding:0;background:#d23f37;color:#fff;overflow:hidden}
+.swipe-delete{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:100%;color:#fff;font-weight:800;font-size:.875rem}
+.swipe-delete:focus-visible{outline:3px solid #fff;outline-offset:-6px}
 .swipe-back.armed svg{transform:scale(1.2)}
+/* Same-brand coupons as a pile: two cards peek out underneath, a +N tells how many. */
+.coupon-stack{position:relative;display:grid;padding-bottom:14px;min-width:0}
+.coupon-stack::before,.coupon-stack::after{content:"";position:absolute;bottom:7px;left:12px;right:12px;height:48px;border:1px solid var(--edge);border-radius:16px;background:var(--surface);box-shadow:0 2px 6px var(--shadow)}
+.coupon-stack::after{bottom:0;left:26px;right:26px;opacity:.75}
+.stack-count{position:absolute;z-index:2;right:16px;bottom:2px;min-width:30px;height:24px;padding:0 9px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-size:.8125rem;font-weight:800;line-height:24px;text-align:center;pointer-events:none}
+.stack-head{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 2px -6px}
+.stack-head strong{display:flex;align-items:baseline;gap:8px;font-size:1rem}
+.stack-head strong span{color:var(--muted);font-size:.875rem;font-weight:600}
+.stack-fold{min-height:44px;padding:6px 12px}
+@keyframes fan-in{from{opacity:0;transform:translateY(-22px) scale(.96)}}
+.coupon-card.fan-in{animation:fan-in .32s cubic-bezier(.2,.8,.2,1)}
+/* Selecting several: picked cards get an outline and a check; a bar offers what to do with them. */
+.selecting .coupon-card{transition:transform .15s}
+.selecting .coupon-card::after{content:"";position:absolute;top:12px;left:12px;width:24px;height:24px;border-radius:50%;border:2px solid var(--edge-strong);background:var(--surface);box-sizing:border-box}
+.coupon-card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset;transform:scale(.98)}
+.coupon-card.selected::after{border-color:var(--accent);background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12 4 4 8-8'/%3E%3C/svg%3E") center/16px no-repeat}
+.select-bar{position:fixed;z-index:7;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(560px,calc(100% - 24px));display:flex;align-items:center;gap:10px;padding:8px 8px 8px 10px;border-radius:20px;background:var(--glass,var(--surface));border:1px solid var(--glass-edge,var(--edge));box-shadow:0 10px 30px var(--shadow);-webkit-backdrop-filter:blur(20px) saturate(1.8);backdrop-filter:blur(20px) saturate(1.8);animation:select-up .25s cubic-bezier(.2,.8,.2,1)}
+.select-count{flex:1;font-size:.9375rem;white-space:nowrap}
+.select-actions{display:flex;gap:6px}
+.select-actions>*{min-height:44px;padding-inline:12px}
+@keyframes select-up{from{opacity:0;transform:translate(-50%,20px)}}
+.selecting .tabbar{display:none!important}
 .coupon-card{background:var(--surface);border:1px solid var(--edge);border-radius:16px;display:flex;gap:15px;align-items:center;text-align:left;padding:15px;min-width:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .coupon-card:active{background:var(--tint)}
 .coupon-image{display:grid;place-items:center;width:72px;height:75px;flex-shrink:0;border-radius:11px;background:var(--lilac-bg);font-size:1.6rem;font-weight:700;color:var(--lilac-fg);overflow:hidden}
@@ -178,7 +202,16 @@ main.wrap{padding-top:32px}
 .empty-tip{margin:14px 0 0!important;font-size:.8125rem!important}
 .empty-tip:empty{display:none}
 .coupon-card.just-added{animation:just-added 2.4s ease-out}
-@keyframes just-added{0%,35%{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}}
+/* A new coupon drops into its place, then glows for a moment. */
+@keyframes just-added{0%{opacity:0;transform:translateY(-18px) scale(1.03)}14%{opacity:1;transform:none}0%,35%{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}}
+.coupon-card.flying{position:fixed;z-index:8;margin:0;pointer-events:none;box-shadow:0 12px 30px var(--shadow)}
+.done-stamp{position:fixed;z-index:9;left:50%;top:42%;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--surface) 88%,transparent);box-shadow:0 14px 40px var(--shadow);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);pointer-events:none;animation:stamp 0.95s cubic-bezier(.3,1.4,.45,1) forwards}
+.done-stamp svg{width:72px;height:72px;fill:none;stroke:var(--ok-fg);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.done-stamp circle{stroke-dasharray:145;stroke-dashoffset:145;animation:draw .45s .05s ease-out forwards}
+.done-stamp path{stroke-dasharray:36;stroke-dashoffset:36;animation:draw .3s .38s ease-out forwards}
+.viewer .done-stamp{background:#ffffffe6}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes stamp{0%{opacity:0;transform:scale(.6)}18%{opacity:1;transform:scale(1)}75%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.92)}}
 footer{justify-content:center;gap:7px;color:var(--muted);font-size:.8125rem;padding-block:24px calc(32px + env(safe-area-inset-bottom,0px));text-align:center}
 footer svg{width:15px;height:15px}
 .fab{display:none}
@@ -282,6 +315,14 @@ footer svg{width:15px;height:15px}
 .viewer-info .coupon-code{font-size:1.125rem;font-weight:700}
 .viewer-balance{font-size:.875rem;color:#4b4552;font-weight:600}
 .viewer-bar .button-primary{background:#302b38;color:#fff;min-height:48px;padding-inline:20px}
+.viewer-pager{position:fixed;left:0;right:0;bottom:calc(84px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:2px;pointer-events:none}
+.viewer-dot{pointer-events:auto;display:grid;place-items:center;width:28px;height:28px}
+.viewer-dot::before{content:"";width:8px;height:8px;border-radius:4px;background:#cdc9d1;transition:width .2s,background .2s}
+.viewer-dot[aria-current=true]::before{width:22px;background:#302b38}
+@keyframes slide-in-right{from{opacity:0;transform:translateX(40px)}}
+@keyframes slide-in-left{from{opacity:0;transform:translateX(-40px)}}
+.slide-in-right{animation:slide-in-right .26s cubic-bezier(.2,.8,.2,1)}
+.slide-in-left{animation:slide-in-left .26s cubic-bezier(.2,.8,.2,1)}
 
 /* settings */
 .settings{display:grid;gap:22px}
