@@ -282,6 +282,14 @@ footer svg{width:15px;height:15px}
 .viewer-info .coupon-code{font-size:1.125rem;font-weight:700}
 .viewer-balance{font-size:.875rem;color:#4b4552;font-weight:600}
 .viewer-bar .button-primary{background:#302b38;color:#fff;min-height:48px;padding-inline:20px}
+.viewer-pager{position:fixed;left:0;right:0;bottom:calc(84px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:2px;pointer-events:none}
+.viewer-dot{pointer-events:auto;display:grid;place-items:center;width:28px;height:28px}
+.viewer-dot::before{content:"";width:8px;height:8px;border-radius:4px;background:#cdc9d1;transition:width .2s,background .2s}
+.viewer-dot[aria-current=true]::before{width:22px;background:#302b38}
+@keyframes slide-in-right{from{opacity:0;transform:translateX(40px)}}
+@keyframes slide-in-left{from{opacity:0;transform:translateX(-40px)}}
+.slide-in-right{animation:slide-in-right .26s cubic-bezier(.2,.8,.2,1)}
+.slide-in-left{animation:slide-in-left .26s cubic-bezier(.2,.8,.2,1)}
 
 /* settings */
 .settings{display:grid;gap:22px}

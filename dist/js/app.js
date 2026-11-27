@@ -1329,39 +1329,85 @@ async function markUsed(record, used) {
   });
 }
 
+// Coupons of the same brand that can be shown at the counter, soonest to expire first: the
+// full-screen view pages through them, so several 스타벅스 coupons are used one after another.
+function viewerGroup(record) {
+  const today = localDay();
+  const group = sortCoupons(records.filter(item => item.brand === record.brand && isUsable(statusOf(item, today)) &&
+    (item.image || item.code)), 'expiry', today);
+  return group.length > 1 && group.some(item => item.id === record.id) ? group : null;
+}
+
 // Full-screen coupon for the counter. With a record, the bottom bar shows the number and lets
 // the user mark it used right there, without going back to the details sheet.
+let viewerPager = null;
 function openViewer(blob, record) {
+  let group = record ? viewerGroup(record) : null;
+  let index = group ? group.findIndex(item => item.id === record.id) : 0;
   const close = button('', 'icon-button viewer-close', () => viewer.close());
   close.append(icon('close'));
   close.setAttribute('aria-label', '닫기');
-  let content;
-  if (blob) {
-    content = el('img', 'viewer-image');
-    content.src = objectURL(blob);
-    content.alt = '기프티콘 원본';
-  } else {
-    // No image: the number, large enough for the cashier to type in.
-    content = el('div', 'viewer-code');
-    content.append(el('p', '', record.brand), el('strong', '', record.code));
-  }
-  viewer.replaceChildren(close, content);
-  viewer.classList.toggle('has-bar', Boolean(record));
-  if (record) {
+  const draw = direction => {
+    const current = group ? group[index] : record;
+    const picture = group ? current.image : blob;
+    let content;
+    if (picture) {
+      content = el('img', 'viewer-image');
+      content.src = objectURL(picture);
+      content.alt = '기프티콘 원본';
+    } else {
+      // No image: the number, large enough for the cashier to type in.
+      content = el('div', 'viewer-code');
+      content.append(el('p', '', current.brand), el('strong', '', current.code));
+    }
+    if (direction) content.classList.add('slide-in-' + direction);
+    viewer.replaceChildren(close, content);
+    viewer.classList.toggle('has-bar', Boolean(current));
+    if (!current) return;
     const bar = el('div', 'viewer-bar');
     const info = el('div', 'viewer-info');
-    info.append(el('strong', '', record.name));
-    if (record.code) info.append(el('span', 'coupon-code', record.code));
-    if (record.balance != null) info.append(el('span', 'viewer-balance', `잔액 ${formatWon(record.balance)}`));
+    info.append(el('strong', '', current.name));
+    if (current.code) info.append(el('span', 'coupon-code', current.code));
+    if (current.balance != null) info.append(el('span', 'viewer-balance', `잔액 ${formatWon(current.balance)}`));
     bar.append(info);
-    if (isUsable(statusOf(record))) {
-      bar.append(button('사용 완료', 'button-primary', () => {
-        viewer.close();
-        markUsed(record, true);
+    if (group) {
+      // Which of the brand's coupons this is; swipe sideways (or tap) for the others.
+      const pager = el('div', 'viewer-pager');
+      pager.setAttribute('aria-label', `${group.length}장 중 ${index + 1}번째`);
+      group.forEach((item, i) => {
+        const dot = button('', 'viewer-dot', () => go(i));
+        dot.setAttribute('aria-label', `${i + 1}번째 쿠폰`);
+        if (i === index) dot.setAttribute('aria-current', 'true');
+        pager.append(dot);
+      });
+      viewer.append(pager);
+    }
+    if (isUsable(statusOf(current))) {
+      bar.append(button('사용 완료', 'button-primary', async () => {
+        if (!group) { viewer.close(); markUsed(current, true); return; }
+        // Several coupons: stay on screen and move to the next one.
+        if (!(await quickToggleUsed(current))) return;
+        group = group.filter(item => item.id !== current.id);
+        if (!group.length) { viewer.close(); return; }
+        if (group.length === 1) { record = group[0]; group = null; index = 0; blob = record.image; draw('right'); return; }
+        index = Math.min(index, group.length - 1);
+        draw('right');
       }));
     }
     viewer.append(bar);
-  }
+    // Redrawing replaced the viewer's children, the 실행 취소 toast among them.
+    placeToast();
+  };
+  const go = next => {
+    if (!group || next < 0 || next >= group.length || next === index) return false;
+    const direction = next > index ? 'right' : 'left';
+    index = next;
+    draw(direction);
+    navigator.vibrate?.(8);
+    return true;
+  };
+  viewerPager = { next: () => go(index + 1), prev: () => go(index - 1) };
+  draw();
   viewer.showModal();
 }
 
@@ -1406,7 +1452,59 @@ async function quickDelete(record) {
 const swipeBack = el('div', 'swipe-back');
 swipeBack.setAttribute('aria-hidden', 'true');
 
+// Sideways swipes in the full-screen coupon and the details sheet move to the next coupon.
+function horizontalSwipe(target, onSwipe) {
+  let start = null;
+  target.addEventListener('pointerdown', event => {
+    if (event.button > 0 || event.target.closest('input, textarea, select')) { start = null; return; }
+    start = { x: event.clientX, y: event.clientY, t: Date.now() };
+  });
+  const end = event => {
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    const quick = Date.now() - start.t < 600;
+    start = null;
+    if (event.type !== 'pointerup' || Math.abs(dx) < (quick ? 50 : 90) || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    if (onSwipe(dx < 0 ? 'next' : 'prev')) {
+      // The tap that ends a swipe must not also press a button underneath.
+      const block = e => { e.stopPropagation(); e.preventDefault(); };
+      target.addEventListener('click', block, { capture: true, once: true });
+      setTimeout(() => target.removeEventListener('click', block, { capture: true }), 0);
+    }
+  };
+  target.addEventListener('pointerup', end);
+  target.addEventListener('pointercancel', end);
+}
+
+// The coupon next to the one open in details, in the order the list shows them.
+function neighbour(id, step) {
+  const ids = all('#coupon-list .coupon-card').map(card => card.dataset.id);
+  const i = ids.indexOf(id);
+  return i < 0 ? null : ids[i + step] || null;
+}
+
+function stepDetails(direction) {
+  if (currentPage?.kind !== 'details' || currentPage.busy) return false;
+  const next = neighbour(currentPage.id, direction === 'next' ? 1 : -1);
+  if (!next) return false;
+  details(next);
+  $('.dialog-body', dialog)?.classList.add('slide-in-' + (direction === 'next' ? 'right' : 'left'));
+  navigator.vibrate?.(8);
+  return true;
+}
+
 function wireSwipe() {
+  horizontalSwipe(viewer, direction => viewerPager?.[direction]() || false);
+  horizontalSwipe(dialog, stepDetails);
+  viewer.addEventListener('close', () => { viewerPager = null; });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    if (event.target.closest('input, textarea, select')) return;
+    const direction = event.key === 'ArrowRight' ? 'next' : 'prev';
+    if (viewer.open) viewerPager?.[direction]();
+    else if (dialog.open) stepDetails(direction);
+  });
   const list = $('#coupon-list');
   let drag = null;
   let suppressClick = false;
