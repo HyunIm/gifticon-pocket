@@ -10,6 +10,7 @@ import { readGifticon, warmUp, ReadError } from './ocr.js';
 import { createBackup, backupFileName, readBackup, mergeBackup, BackupError } from './backup.js';
 import { hasPushBackend, pushState, enablePush, disablePush, sendTestPush, syncReminders } from './push.js';
 import { initShell, canInstall, promptInstall, openInstallGuide } from './install.js';
+import { buildCalendar } from './calendar.js';
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const BACKUP_KEY = 'gifticon-pocket:last-backup';
@@ -1272,6 +1273,11 @@ async function settings() {
       el('p', 'settings-note', '알림을 보내려고 유효기간과 브랜드·상품명을 서버에 보관해요. 쿠폰 번호와 이미지는 보내지 않아요.')) :
       section('만료 임박', el('p', 'settings-desc', '유효기간이 7일 이내인 기프티콘을 확인할 수 있어요.'),
         button('만료 임박 보기', 'button-secondary', () => { dialog.close(); setFilter('expiring'); })),
+    section('캘린더 알림', el('p', 'settings-desc', hasPushBackend
+      ? '알림 대신 캘린더를 쓰고 싶다면, 만료일을 캘린더에 넣어 두면 만료 3일 전과 당일 오전 9시에 캘린더가 알려 줘요.'
+      : '만료일을 휴대폰 캘린더에 넣어 두면 만료 3일 전과 당일 오전 9시에 캘린더가 알려 줘요. 앱을 열지 않아도 알림이 와요.'),
+      calendarButton(),
+      el('p', 'settings-note', '쿠폰을 새로 등록했다면 다시 받아 추가해 주세요. 같은 쿠폰은 겹치지 않고 바뀐 내용으로 갱신돼요.')),
     section('백업', el('p', 'settings-desc', '기기를 바꾸거나 브라우저 데이터를 지우면 쿠폰도 사라져요. 가끔 백업 파일을 저장해 두세요.'), backup),
     section('저장 공간', space),
   );
@@ -1389,6 +1395,24 @@ async function cleanUp(past) {
   } catch (error) {
     announce(errorMessage(error));
   }
+}
+
+// Downloads the expiry dates as an .ics file; opening it adds the events with their alarms
+// (iPhone: 캘린더에 추가, Android: the calendar app that opens .ics files).
+function calendarButton() {
+  const { count } = buildCalendar(records);
+  if (!count) return el('p', 'settings-status', '사용할 수 있는 기프티콘이 없어요.');
+  return button(`캘린더 파일 받기 (${count}개)`, 'button-secondary', () => {
+    const { text } = buildCalendar(records);
+    const link = el('a');
+    link.href = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }));
+    link.download = 'gifticon-pocket-expiry.ics';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    announce('캘린더 파일을 받았어요. 파일을 열어 캘린더에 추가해 주세요.');
+  });
 }
 
 async function exportBackup() {
