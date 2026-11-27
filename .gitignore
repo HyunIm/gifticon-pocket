@@ -1,6 +1,4 @@
-.wrangler/
 node_modules/
-.dev.vars
 .env
 dist/sw-manifest.js
 docs/screenshots/raw/

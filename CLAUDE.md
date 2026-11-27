@@ -1,7 +1,7 @@
 # 기프티콘 포켓 — 작업 메모
 
 ## 구조
-- `dist/`가 곧 배포되는 앱입니다(빌드·번들러 없음, ES 모듈). 경로는 모두 상대 경로라 GitHub Pages 하위 경로(`/gifticon-pocket/`)와 Cloudflare 루트 양쪽에서 동작해야 합니다.
+- `dist/`가 곧 배포되는 앱입니다(빌드·번들러 없음, ES 모듈). GitHub Pages 하위 경로(`/gifticon-pocket/`)에서 동작하도록 경로는 모두 상대 경로로 씁니다. 서버는 없습니다(만료 알림은 앱 안 배너와 캘린더 .ics).
 - `dist/sw-manifest.js`는 생성 파일이라 커밋하지 않습니다(`npm run build`).
 - 이미지 읽기 엔진은 `dist/vendor/<이름>-<버전>/`에 함께 배포합니다(`npm run vendor`). 외부 CDN을 쓰지 않습니다.
 

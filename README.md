@@ -29,7 +29,7 @@
 flowchart LR
     A["📸 기프티콘 이미지<br/>고르기·붙여넣기·공유"] --> B["🔍 기기 안에서 읽기<br/>브랜드·상품명·유효기간·번호"]
     B --> C["👛 지갑에 보관<br/>D-day 순 정렬·브랜드 묶음"]
-    C --> D["⏰ 만료 전 알림<br/>앱 안 배너·캘린더·푸시"]
+    C --> D["⏰ 만료 전 알림<br/>앱 안 배너·캘린더"]
     C --> E["🏪 매장에서 보여 주기<br/>전체 화면 바코드 → 사용 완료"]
 ```
 
@@ -108,38 +108,35 @@ flowchart TB
 ![zxing-wasm](https://img.shields.io/badge/zxing--wasm-3.1.6-654FF0?logo=webassembly&logoColor=white)
 ![BarcodeDetector](https://img.shields.io/badge/Shape_Detection-BarcodeDetector-4285F4?logo=googlechrome&logoColor=white)
 
-**배포·알림·품질**
+**배포·품질**
 
 ![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-호스팅-222222?logo=githubpages&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-자동_배포-2088FF?logo=githubactions&logoColor=white)
-![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-Durable_Objects-F38020?logo=cloudflare&logoColor=white)
-![Web Push](https://img.shields.io/badge/Web_Push-VAPID·RFC_8291-5A0FC8)
-![node:test](https://img.shields.io/badge/node:test-62_tests-339933?logo=nodedotjs&logoColor=white)
+![node:test](https://img.shields.io/badge/node:test-46_tests-339933?logo=nodedotjs&logoColor=white)
 ![axe-core](https://img.shields.io/badge/axe--core-접근성_위반_0-663399)
 ![Playwright](https://img.shields.io/badge/Playwright-E2E·캡처-2EAD33?logo=playwright&logoColor=white)
 
 ## 🏗️ 구조
+
+서버 없이 정적 파일만으로 동작해요. 쿠폰과 이미지는 모두 내 기기 안에 있어요.
 
 ```mermaid
 flowchart LR
     subgraph Device["📱 내 기기 (브라우저)"]
         UI["앱 화면<br/>dist/js/*.js"] <--> DB[("IndexedDB<br/>쿠폰·이미지")]
         UI --> W["읽기 엔진<br/>Tesseract·zxing"]
+        UI --> ICS["캘린더 파일 .ics<br/>→ 휴대폰 캘린더가 알림"]
         SW["Service Worker<br/>오프라인 캐시"] -.-> UI
     end
-    GH["GitHub Pages<br/>정적 파일"] --> SW
-    UI -. "선택: 유효기간·브랜드만" .-> CF["Cloudflare Worker<br/>+ Durable Object"]
-    CF -. "Web Push" .-> SW
+    GH["GitHub Pages<br/>정적 파일만"] --> SW
 ```
-
-- **GitHub Pages 버전**: 서버 없이 동작해요. 만료 알림은 앱 안 배너와 캘린더 파일로 받아요.
-- **Cloudflare 버전**(선택): 만료 3일 전·당일 오전 9시에 백그라운드 푸시를 보내요. 이때만 유효기간·브랜드·상품명을 서버에 보관하고, 쿠폰 번호와 이미지는 보내지 않아요.
 
 ## 🔒 개인정보
 
 | | |
 |---|---|
 | 🖼️ 이미지·쿠폰 번호 | 기기 밖으로 나가지 않아요. 이미지 읽기도 기기 안에서 해요 |
+| ☁️ 서버 | 없어요. 앱 파일만 GitHub Pages에서 받아요 |
 | 🔄 동기화 | 하지 않아요. 브라우저 데이터를 지우면 쿠폰도 지워지니 **백업 파일**을 저장해 두세요 |
 | 🍎 iPhone | Safari는 오래 안 쓰면 사이트 데이터를 지울 수 있어요. **홈 화면에 추가**해서 쓰세요 |
 | 💬 카카오톡 | 카카오톡 안의 브라우저는 저장 공간이 따로라서, 다른 브라우저로 열도록 안내해요 |
@@ -153,17 +150,16 @@ flowchart LR
 ```sh
 npm install          # 개발 도구 설치
 npm run build        # 오프라인 파일 목록 생성
-npx wrangler dev     # 또는: python3 -m http.server 8787 --directory dist
+python3 -m http.server 8787 --directory dist   # http://localhost:8787
 ```
 
 | 명령 | 하는 일 |
 |---|---|
-| `npm test` | 단위 테스트 62개 — OCR 결과 19종 인식, 날짜·알림 계산, 백업, Web Push 암호화(RFC 8291 예제 값), 알림 서버 |
+| `npm test` | 단위 테스트 46개 — OCR 결과 19종 인식, 날짜·D-day 계산, 캘린더 파일, 백업 |
 | `npm run build` | `dist/sw-manifest.js`(오프라인 파일 목록·무결성 해시) 생성 |
 | `npm run vendor` | Tesseract.js·zxing-wasm을 `dist/vendor/`로 복사 (버전을 바꾼 뒤) |
 | `npm run screenshots` | README 화면 캡처 다시 만들기 (Playwright 필요) |
 | `npm run deploy` | GitHub Pages 수동 배포 |
-| `npm run deploy:worker` | Cloudflare 배포 (푸시 알림 포함) |
 
 <details>
 <summary>📁 폴더 구조</summary>
@@ -180,9 +176,8 @@ dist/                  배포되는 앱 그대로 (빌드 단계 없음)
 │  ├─ db.js            IndexedDB (Safari Blob 안전 저장)
 │  ├─ coupon.js        상태·D-day·정렬·검색
 │  ├─ calendar.js      .ics 캘린더 파일
-│  ├─ backup.js · reminders.js · push.js · install.js · dom.js
+│  ├─ backup.js · install.js · dom.js
 └─ vendor/             Tesseract.js 7 · zxing-wasm (처음 쓸 때 내려받아 캐시)
-worker/                Cloudflare Worker + Durable Object (Web Push)
 scripts/               배포·오프라인 목록·엔진 복사·화면 캡처
 test/                  node:test 단위 테스트
 docs/screenshots/      README 화면
@@ -202,17 +197,6 @@ flowchart LR
 ```
 
 `main`에 병합하면 자동으로 배포돼요. 테스트가 실패하면 배포하지 않고, 진행 상황은 **Actions** 탭에서 볼 수 있어요.
-
-<details>
-<summary>☁️ Cloudflare 배포 (백그라운드 푸시 알림)</summary>
-
-```sh
-npx wrangler login
-npm run deploy:worker
-```
-
-`dist`는 Workers Static Assets로, `worker/index.js`는 Worker로 배포되고 `PushReminders` Durable Object(무료 플랜의 SQLite 저장소)를 만들어요. VAPID 키는 처음 요청할 때 자동으로 만들어 보관해요. 직접 관리하려면 `VAPID_PUBLIC_KEY`·`VAPID_PRIVATE_KEY`(base64url) 시크릿과 `VAPID_SUBJECT`(`mailto:`/`https:`) 변수를 설정하세요. 키를 바꾸면 기존 구독자는 알림을 다시 켜야 해요.
-</details>
 
 <details>
 <summary>🔄 이미지 읽기 엔진 업데이트</summary>
