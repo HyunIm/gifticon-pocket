@@ -37,6 +37,7 @@
   --danger-bg:#3d2422;--danger-fg:#f4aaa3;--warn-bg:#33281c;--warn-edge:#5c4630;--warn-fg:#f0cfa6;
   --ok-fg:#93d3b0;--ok-bg:#1c2b22;--ok-edge:#3f7a57;--need-edge:#c88745;--need-bg:#2e241a;
   --backdrop:#000000a6;--shadow:#00000080;
+  --glass:#26222c99;--glass-edge:#ffffff1f;--glass-shine:#ffffff14;--glass-pill:#ffffff1f;
 }
 *{box-sizing:border-box}
 /* The list re-renders by swapping nodes; scroll anchoring would then jump the page. */
