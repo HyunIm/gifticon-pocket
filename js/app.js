@@ -780,7 +780,7 @@ function editor(record, { file = null, pick = false } = {}) {
       preview.append(zoom);
     } else {
       const hint = el('p', 'picker-hint');
-      hint.append(el('strong', '', '기프티콘 이미지를 선택하세요'),
+      hint.append(el('strong', '', '기프티콘 이미지를 골라 주세요'),
         el('span', '', isNew ? '브랜드, 상품명, 유효기간, 쿠폰 번호를 자동으로 채워요. 여러 장을 한 번에 골라도 돼요.' : '이미지를 바꾸면 빈 칸을 자동으로 채워요.'));
       preview.append(hint);
     }
@@ -1059,7 +1059,7 @@ function details(id) {
       const value = /^[\d\s-]+$/.test(record.code) ? digits : record.code;
       try {
         await navigator.clipboard.writeText(value);
-        copy.textContent = '복사됨';
+        copy.textContent = '복사했어요';
       } catch {
         copy.textContent = '복사 실패';
       }
@@ -1095,7 +1095,7 @@ function details(id) {
 
   const actions = el('div', 'dialog-actions');
   actions.append(
-    button('삭제', 'button-danger', () => confirmDelete(record)),
+    button('삭제', 'button-danger action-delete', () => confirmDelete(record)),
     button('수정', 'button-secondary', () => editor(record)),
     button(record.used ? '사용 취소' : '사용 완료', 'button-primary', () => markUsed(record, !record.used)),
   );
@@ -1186,7 +1186,7 @@ function shareButton(record) {
 
 async function markUsed(record, used) {
   // A gift card with money left was probably only partly spent.
-  if (used && record.balance > 0 && !(await ask(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용했나요? 일부만 썼다면 ‘사용 금액 입력’으로 잔액을 줄여 주세요.`, { yes: '전부 사용함', no: '취소' }))) return;
+  if (used && record.balance > 0 && !(await ask(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용했나요? 일부만 썼다면 ‘사용 금액 입력’으로 잔액을 줄여 주세요.`, { yes: '다 썼어요', no: '취소' }))) return;
   const done = await writeFromDialog(record.id, old => ({ ...existing(old), used, updatedAt: Date.now() }), null, () => dialog.close());
   if (!done) return;
   if (used) navigator.vibrate?.(30);
