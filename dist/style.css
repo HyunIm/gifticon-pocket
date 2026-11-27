@@ -8,6 +8,7 @@
   --danger-bg:#fae9e6;--danger-fg:#8a3632;--warn-bg:#fff7ee;--warn-edge:#f3d9bf;--warn-fg:#6d4a2c;
   --ok-fg:#2f6a49;--ok-bg:#f4fbf5;--ok-edge:#9ccdaa;--need-edge:#e2a15f;--need-bg:#fffaf3;
   --backdrop:#211b2a73;--shadow:#25212b33;
+  --glass:#ffffffa6;--glass-edge:#ffffffb3;--glass-shine:#ffffffcc;--glass-pill:#302b3814;
   font-family:"Pretendard","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR","Malgun Gothic",system-ui,sans-serif;
   color:var(--ink);background:var(--bg);font-synthesis:none;-webkit-text-size-adjust:100%
 }
@@ -22,6 +23,7 @@
     --danger-bg:#3d2422;--danger-fg:#f4aaa3;--warn-bg:#33281c;--warn-edge:#5c4630;--warn-fg:#f0cfa6;
     --ok-fg:#93d3b0;--ok-bg:#1c2b22;--ok-edge:#3f7a57;--need-edge:#c88745;--need-bg:#2e241a;
     --backdrop:#000000a6;--shadow:#00000080;
+    --glass:#26222c99;--glass-edge:#ffffff1f;--glass-shine:#ffffff14;--glass-pill:#ffffff1f;
   }
 }
 *{box-sizing:border-box}
@@ -280,6 +282,15 @@ body.drop-ready::after{content:"이미지를 놓으면 등록돼요";position:fi
 .toast-action{color:#e3d3ff;font-weight:800;padding:4px 2px;white-space:nowrap}
 @keyframes toast-in{from{opacity:0;translate:0 8px}}
 
+/* phone tab bar: frosted glass, a highlight that slides (or is dragged) between tabs */
+.tabbar{display:none}
+body:not(.has-coupons) .tools{display:none}
+@keyframes tab-pop{35%{transform:scale(.8)}70%{transform:scale(1.14)}}
+@keyframes tab-in-right{from{opacity:0;transform:translateX(24px)}}
+@keyframes tab-in-left{from{opacity:0;transform:translateX(-24px)}}
+.collection.tab-enter #coupon-list,.collection.tab-enter .section-head h2{animation:tab-in-right .28s cubic-bezier(.2,.8,.2,1)}
+.collection.tab-enter[data-enter=left] #coupon-list,.collection.tab-enter[data-enter=left] .section-head h2{animation-name:tab-in-left}
+
 @media(max-width:760px){
   .wrap{width:calc(100% - 32px)}
   .head-inner{min-height:62px}
@@ -302,8 +313,29 @@ body.drop-ready::after{content:"이미지를 놓으면 등록돼요";position:fi
   #coupon-list{grid-template-columns:1fr}
   .fab{display:inline-flex;position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:5;min-height:54px;padding:12px 20px 12px 16px;border-radius:999px;font-size:1rem;box-shadow:0 10px 26px var(--shadow)}
   .fab svg{width:22px;height:22px}
-  footer{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
-  .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
+  footer{padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  /* The tab bar replaces the hero, summary cards, filter chips, floating button and header gear,
+     so the list starts right under the header. */
+  .hero,.stats,.filters,.fab,#settings-button{display:none!important}
+  .section-head{margin-bottom:14px}
+  footer{padding-top:16px}
+  .tabbar{display:flex;align-items:center;gap:10px;position:fixed;z-index:6;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));pointer-events:none}
+  .tabbar>*{pointer-events:auto}
+  .tabbar-glass,.tab-add{-webkit-backdrop-filter:blur(20px) saturate(1.8);backdrop-filter:blur(20px) saturate(1.8);box-shadow:0 10px 30px var(--shadow),inset 0 1px 0 var(--glass-shine)}
+  .tabbar-glass{position:relative;flex:1;display:grid;grid-template-columns:repeat(4,1fr);padding:5px;border-radius:999px;background:var(--glass);border:1px solid var(--glass-edge);touch-action:none;-webkit-user-select:none;user-select:none}
+  .tab-pill{position:absolute;top:5px;bottom:5px;left:0;width:var(--pill-w,0);transform:translateX(var(--pill-x,0));border-radius:999px;background:var(--glass-pill);box-shadow:inset 0 0 0 1px var(--glass-edge);transition:transform .45s cubic-bezier(.3,1.4,.45,1),width .3s,scale .2s}
+  .tabbar-glass.dragging .tab-pill{transition:width .3s,scale .2s;scale:1.06 1.12}
+  .tab{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:54px;border-radius:999px;color:var(--muted);font-size:.75rem;font-weight:700;transition:color .2s}
+  .tab:hover{filter:none}
+  .tab svg{width:23px;height:23px;transition:transform .2s}
+  .tab:active svg{transform:scale(.88)}
+  .tab[aria-current=page],.tab.drag-over{color:var(--ink)}
+  .tab[aria-current=page] svg{stroke-width:2.2}
+  .tab.pop svg{animation:tab-pop .42s cubic-bezier(.3,1.4,.45,1)}
+  .tab-badge{position:absolute;top:5px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e5484d;color:#fff;font-size:.6875rem;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+  .tab-add{flex-shrink:0;display:grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--primary);color:var(--on-primary);border:1px solid var(--glass-edge)}
+  .tab-add svg{width:26px;height:26px;stroke-width:2.2}
 }
 @media(max-width:520px){
   .brand{font-size:1.125rem;gap:7px}.brand img{width:31px;height:31px}
@@ -333,3 +365,4 @@ body.drop-ready::after{content:"이미지를 놓으면 등록돼요";position:fi
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.tabbar-glass{background:var(--surface)}}
