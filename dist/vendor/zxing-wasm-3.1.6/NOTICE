@@ -1,0 +1,2 @@
+zxing_reader.wasm is compiled from zxing-cpp (https://github.com/zxing-cpp/zxing-cpp),
+licensed under the Apache License 2.0. The JavaScript wrapper (zxing-wasm) is MIT licensed, see LICENSE.

@@ -230,6 +230,46 @@ export function findBrand(text, { loose = false, extra = [] } = {}) {
   return best;
 }
 
+// A short line one letter off a brand name ("꼽네치킨" for 굽네치킨): OCR misread a syllable,
+// often where a highlighter mark or a logo touches the text. Only names of four or more letters
+// and one wrong syllable, so ordinary words do not turn into brands. When several brands are one
+// syllable off (굽네치킨 and 네네치킨), the one whose letters (jamo) are closest wins.
+const jamo = text => [...text].flatMap(ch => {
+  const code = ch.charCodeAt(0) - 0xac00;
+  if (code < 0 || code > 11171) return [ch];
+  const tail = code % 28;
+  return [Math.floor(code / 588), 19 + Math.floor((code % 588) / 28), ...(tail ? [40 + tail] : [])].map(String);
+});
+const distance = (a, b) => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+};
+
+export function findBrandNear(text, extra = []) {
+  const flat = compact(text);
+  if (flat.length < 4 || flat.length > 10) return null;
+  const letters = jamo(flat);
+  let best = null;
+  let bestDistance = Infinity;
+  let tie = false;
+  for (const brand of extra.length ? [...brands, ...extra] : brands) {
+    const name = compact(brand.name);
+    if (name.length !== flat.length || name.length < 4) continue;
+    let diff = 0;
+    for (let i = 0; i < name.length && diff < 2; i++) if (name[i] !== flat[i]) diff++;
+    if (diff !== 1) continue;
+    const d = distance(letters, jamo(name));
+    if (d < bestDistance) { best = brand; bestDistance = d; tie = false; }
+    else if (d === bestDistance && brand !== best) tie = true;
+  }
+  return best && !tie && bestDistance <= 2 ? best : null;
+}
+
 const categoryWords = [
   ['카페', /커피|아메리카노|라떼|카페|프라푸치노|케이크|케익|도넛|아이스크림|빙수|음료|스무디|에이드|마카롱|베이커리/],
   ['외식', /치킨|피자|버거|떡볶이|도시락|스테이크|뷔페|김밥|샌드위치/],

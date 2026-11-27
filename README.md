@@ -30,7 +30,7 @@ Safari에서는 장기간 방문하지 않으면 사이트 데이터가 지워�
 
 ## 이미지 읽기의 동작 방식
 
-[Tesseract.js](https://github.com/naptha/tesseract.js) 7과 한국어·영어 모델(`best_int`)을 `dist/vendor/`에 함께 배포합니다. 처음 이미지를 읽을 때 약 7.6MB를 내려받고, 이후에는 서비스 워커가 보관합니다. 읽은 글자에서 유효기간, 쿠폰 번호, 브랜드(주요 브랜드 약 160개), 상품명, 금액권 잔액을 찾는 규칙은 `dist/js/parse.js`와 `dist/js/brands.js`에 있습니다. 바코드를 읽을 수 있는 브라우저(Android Chrome 등)에서는 바코드 값을 쿠폰 번호로 씁니다.
+[Tesseract.js](https://github.com/naptha/tesseract.js) 7과 한국어·영어 모델(`best_int`)을 `dist/vendor/`에 함께 배포합니다. 처음 이미지를 읽을 때 약 7.6MB를 내려받고, 이후에는 서비스 워커가 보관합니다. 읽은 글자에서 유효기간, 쿠폰 번호, 브랜드(주요 브랜드 약 160개), 상품명, 금액권 잔액을 찾는 규칙은 `dist/js/parse.js`와 `dist/js/brands.js`에 있습니다. 쿠폰 번호는 바코드에서 먼저 읽습니다. 브라우저에 바코드 읽기 기능이 있으면(Android Chrome 등) 그것을 쓰고, 없으면(iPhone Safari 등) 함께 배포한 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm)(약 1MB, 처음 한 번 내려받은 뒤 오프라인 동작)으로 읽습니다. 글자를 읽기 전에는 색을 빼서 브랜드 이름 위의 형광펜 같은 색 표시가 글자를 가리지 않게 하고, 한 글자 틀리게 읽힌 브랜드 이름(꼽네치킨 → 굽네치킨)도 브랜드 목록에서 찾아 줍니다.
 
 자동으로 채운 값은 초록색으로 표시되며, 등록 전에 확인하고 고칠 수 있습니다.
 
@@ -74,7 +74,7 @@ Wrangler가 `dist`를 Workers Static Assets로, `worker/index.js`를 Worker로 �
 
 ## 이미지 읽기 도구 업데이트
 
-`package.json`의 `tesseract.js`, `tesseract.js-core`, `@tesseract.js-data/*` 버전을 바꾼 뒤 실행합니다.
+`package.json`의 `tesseract.js`, `tesseract.js-core`, `@tesseract.js-data/*`, `zxing-wasm` 버전을 바꾼 뒤 실행합니다.
 
 ```sh
 npm install

@@ -1,5 +1,5 @@
 // Turns OCR lines from a gifticon image into coupon fields. Pure functions, no DOM.
-import { findBrand, guessCategory, isBrandText } from './brands.js';
+import { findBrandNear, findBrand, guessCategory, isBrandText } from './brands.js';
 
 const EXPIRY_WORDS = /유효\s*기[간한]|사용\s*기[간한]|교환\s*기[간한]|만료|기한|까지|VALID|EXP/i;
 const OTHER_DATE_WORDS = /주문|발송|구매|결제|발행|선물\s*일|수신|등록|승인|보낸|받은/;
@@ -18,6 +18,8 @@ const fixDigits = text => text
 
 export function cleanLine(text) {
   return fixDigits(text.normalize('NFKC'))
+    // "1.25ㄴ", "500ㄴ": a volume in litres, the L read as ㄴ.
+    .replace(/(\d)[\u3134\u1102\u11AB](?![가-힣])/g, '$1L')
     // A lone jamo is a misread Latin letter ("T" -> "ㅣ", "L" -> "ㄴ"); real words never contain one.
     .replace(/[\u1100-\u11FF\u3131-\u318E]/g, ' ')
     // Table columns come back with separators the image never had: "유효기간 _ 2027년", "교환처 、 스타벅스".
@@ -158,6 +160,10 @@ function pickBrand(lines, extra) {
   }
   const top = [...votes].sort((a, b) => b[1] - a[1])[0];
   if (top) return top[0];
+  for (const line of lines) {
+    const near = findBrandNear(line.text, extra);
+    if (near) return near.name;
+  }
   if (labelled && /[가-힣A-Za-z]/.test(labelled) && labelled.length <= 20) return labelled;
   return '';
 }
@@ -245,9 +251,32 @@ function pickBalance(lines, name) {
 
 // lines: [{ text, h?, y?, conf? }] or strings, top to bottom.
 // extraBrands: brands outside the built-in list (made with makeBrand), e.g. the user's own.
+// Tesseract sometimes splits one printed row in two, e.g. "6419      6125" and "- 7969 -" for
+// "6419 - 7969 - 6125" under a barcode. Lines that share a row are put back together, words in
+// left-to-right order. Only lines with word positions (from the app's reader) are merged.
+export function mergeSplitLines(lines) {
+  const out = [];
+  for (const line of lines) {
+    const row = line.words?.length && out.find(other => {
+      if (!other.words?.length) return false;
+      const overlap = Math.min(other.y + other.h, line.y + line.h) - Math.max(other.y, line.y);
+      return overlap > 0.5 * Math.min(other.h, line.h);
+    });
+    if (!row) { out.push(line); continue; }
+    const words = [...row.words, ...line.words].sort((a, b) => a.x0 - b.x0);
+    const top = Math.min(row.y, line.y);
+    Object.assign(row, {
+      words,
+      text: words.map(word => word.text).join(' '),
+      h: Math.max(row.y + row.h, line.y + line.h) - top,
+      y: top,
+    });
+  }
+  return out;
+}
+
 export function parseGifticon(input, { extraBrands = [], today = new Date() } = {}) {
-  const lines = input
-    .map(line => (typeof line === 'string' ? { text: line } : line))
+  const lines = mergeSplitLines(input.map(line => (typeof line === 'string' ? { text: line } : { ...line })))
     .map(line => ({ ...line, text: cleanLine(line.text || '') }))
     .filter(line => line.text);
   const brand = pickBrand(lines, extraBrands);

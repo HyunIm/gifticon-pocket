@@ -107,3 +107,25 @@ test('coupon codes with letters', () => {
 test('nothing recognisable gives empty fields', () => {
   assert.deepEqual(parseGifticon(['', '!!!']), { brand: '', name: '', expiry: '', code: '', balance: null, category: '기타' });
 });
+
+test('a coupon number split into two lines on the same row is put back together', () => {
+  // What Tesseract returned in the browser for a 굽네치킨 coupon (6419 - 7969 - 6125 under the barcode).
+  const word = (text, x0) => ({ text, x0 });
+  const lines = [
+    { text: 'New', h: 38, y: 820, words: [word('New', 60)] },
+    { text: '오리지널+시카고피자+콜라1.25ㄴ', h: 42, y: 870, words: [word('오리지널+시카고피자+콜라1.25ㄴ', 60)] },
+    { text: '유효기간: 2026.11.13 ~ 2026.12.13', h: 28, y: 975, words: [word('유효기간:', 60), word('2026.11.13', 200), word('~', 400), word('2026.12.13', 430)] },
+    { text: '6419                6125', h: 49, y: 1350, words: [word('6419', 280), word('6125', 540)] },
+    { text: '- 7969 -', h: 30, y: 1358, words: [word('-', 390), word('7969', 420), word('-', 510)] },
+  ];
+  const fields = parseGifticon(lines, { today: new Date(2026, 10, 27) });
+  assert.equal(fields.code, '6419 7969 6125');
+  assert.equal(fields.expiry, '2026-12-13');
+  // "콜라1.25L" comes back as "콜라1.25ㄴ".
+  assert.equal(fields.name, 'New 오리지널+시카고피자+콜라1.25L');
+});
+
+test('a brand one syllable off is recognised when it is clearly the closest', () => {
+  assert.equal(parseGifticon(['꼽네치킨', 'New', '오리지널+시카고피자+콜라1.25ㄴ']).brand, '굽네치킨');
+  assert.equal(parseGifticon(['유효기간 2027.01.01']).brand, '');
+});

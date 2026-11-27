@@ -2,17 +2,17 @@
 // sw-manifest.js, which is not committed: app changes never touch this file, so pull requests
 // do not conflict over it. The page registers sw.js?v=<revision>, so each deploy is a new version.
 importScripts('sw-manifest.js');
-const { revision, shell, vendorDir } = self.OFFLINE_MANIFEST;
+const { revision, shell, vendorDirs } = self.OFFLINE_MANIFEST;
 
 const scope = new URL(self.registration.scope);
 const project = encodeURIComponent(scope.pathname);
 const prefix = 'gifticon-pocket-shell:' + project + ':';
 const cacheName = prefix + revision;
-// The text recognition engine is large and optional, so it is cached on first use, not at install.
-// Its directory name carries the version, so cached copies never go stale.
+// The text recognition engine and barcode reader are large and optional, so they are cached on first
+// use, not at install. Their directory names carry the version, so cached copies never go stale.
 const vendorCache = 'gifticon-pocket-vendor:' + project;
 const shareCache = 'gifticon-pocket-share:' + project;
-const vendorBase = new URL(vendorDir, scope).href;
+const vendorBases = vendorDirs.map(dir => new URL(dir, scope).href);
 
 function shellRequest(path) {
   return new Request(new URL(path, scope), {
@@ -34,7 +34,7 @@ self.addEventListener('activate', event => {
     // Drop engine files from versions the app no longer references.
     const vendor = await caches.open(vendorCache);
     for (const request of await vendor.keys()) {
-      if (!request.url.startsWith(vendorBase)) await vendor.delete(request);
+      if (!vendorBases.some(base => request.url.startsWith(base))) await vendor.delete(request);
     }
   })());
 });
@@ -66,7 +66,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (request.method !== 'GET') return;
-  if (relativePath.startsWith(vendorDir)) {
+  if (vendorDirs.some(dir => relativePath.startsWith(dir))) {
     event.respondWith(caches.open(vendorCache).then(async cache => {
       const cached = await cache.match(request);
       if (cached) return cached;
