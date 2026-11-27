@@ -227,7 +227,7 @@ function pickName(lines, brand, extra) {
   if (!best) return '';
   // Long names wrap onto the next line in the same (large) type.
   const sameSize = other => other && best && lines[best.index].h && other.h &&
-    Math.abs(other.h - lines[best.index].h) / lines[best.index].h < 0.12 && nameCandidate(other, extra);
+    Math.abs(other.h - lines[best.index].h) / lines[best.index].h < 0.15 && nameCandidate(other, extra);
   let start = best.index;
   let end = best.index;
   while (sameSize(lines[start - 1]) && end - start < 2) start--;

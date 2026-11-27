@@ -234,17 +234,27 @@ export function findBrand(text, { loose = false, extra = [] } = {}) {
 // often where a highlighter mark or a logo touches the text. Only names of four or more letters
 // and one wrong syllable, so ordinary words do not turn into brands. When several brands are one
 // syllable off (굽네치킨 and 네네치킨), the one whose letters (jamo) are closest wins.
+const INITIALS = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const VOWELS = 'ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ';
+const FINALS = ' ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ';
+// Each syllable as initial, vowel (and final) letters, tagged with their position.
 const jamo = text => [...text].flatMap(ch => {
   const code = ch.charCodeAt(0) - 0xac00;
   if (code < 0 || code > 11171) return [ch];
   const tail = code % 28;
-  return [Math.floor(code / 588), 19 + Math.floor((code % 588) / 28), ...(tail ? [40 + tail] : [])].map(String);
+  return ['i' + INITIALS[Math.floor(code / 588)], 'v' + VOWELS[Math.floor((code % 588) / 28)], ...(tail ? ['f' + FINALS[tail]] : [])];
 });
+// Letters OCR confuses with each other (ㄱ/ㄲ, ㅗ/ㅜ ...) cost half a change.
+const LOOKALIKES = ['ㄱㄲㅋ', 'ㄷㄸㅌ', 'ㅂㅃㅍ', 'ㅅㅆ', 'ㅈㅉㅊ', 'ㄴㄷ', 'ㅗㅜㅡ', 'ㅏㅓ', 'ㅐㅔ', 'ㅑㅕ'];
+const lookalike = (a, b) => a[0] === b[0] && LOOKALIKES.some(group => group.includes(a[1]) && group.includes(b[1]));
 const distance = (a, b) => {
   let row = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
     const next = [i];
-    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    for (let j = 1; j <= b.length; j++) {
+      const swap = a[i - 1] === b[j - 1] ? 0 : lookalike(a[i - 1], b[j - 1]) ? 0.5 : 1;
+      next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + swap);
+    }
     row = next;
   }
   return row[b.length];

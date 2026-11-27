@@ -126,6 +126,30 @@ async function readBarcode(canvas) {
   return (await detectNative(canvas)) || detectZxing(canvas);
 }
 
+// Tesseract's lines, in the coordinates of the main image (ratio scales a smaller copy up).
+function linesOf(data, ratio = 1) {
+  const lines = [];
+  for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
+    lines.push({
+      text: line.text.trim(), h: (line.bbox.y1 - line.bbox.y0) * ratio, y: line.bbox.y0 * ratio, conf: line.confidence,
+      words: (line.words || []).map(word => ({ text: word.text, x0: word.bbox.x0 * ratio })),
+    });
+  }
+  return lines;
+}
+
+// A line read with low confidence as Latin junk ("Q@e|AlY+A|I Zt DU") is swapped for the same row
+// from the other size when that one was read with confidence.
+const GARBLED = 50;
+function patchGarbled(lines, others) {
+  return lines.map(line => {
+    if (line.conf >= GARBLED) return line;
+    const middle = line.y + line.h / 2;
+    const twin = others.find(other => Math.abs(other.y + other.h / 2 - middle) < Math.max(line.h, other.h) / 2);
+    return twin && twin.conf >= 70 ? twin : line;
+  });
+}
+
 export class ReadError extends Error {}
 
 // Returns { brand, name, expiry, code, balance, category } with empty strings for what was not found.
@@ -134,7 +158,7 @@ export async function readGifticon(blob, onProgress = () => {}, { targetWidth, e
   reading++;
   report = value => onProgress(Math.min(1, Math.max(0, value)));
   try {
-    const { canvas, png } = await prepareForReading(blob, targetWidth);
+    const { canvas, png, fallback } = await prepareForReading(blob, targetWidth);
     let worker;
     try {
       worker = await getWorker();
@@ -147,12 +171,10 @@ export async function readGifticon(blob, onProgress = () => {}, { targetWidth, e
       worker.recognize(png, {}, { blocks: true, text: false }),
       readBarcode(canvas),
     ]);
-    const lines = [];
-    for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
-      lines.push({
-        text: line.text.trim(), h: line.bbox.y1 - line.bbox.y0, y: line.bbox.y0, conf: line.confidence,
-        words: (line.words || []).map(word => ({ text: word.text, x0: word.bbox.x0 })),
-      });
+    let lines = linesOf(data);
+    if (fallback && lines.some(line => line.conf < GARBLED && /[가-힣]/.test(line.text) === false && line.text.length >= 6)) {
+      const second = await worker.recognize(fallback.png, {}, { blocks: true, text: false });
+      lines = patchGarbled(lines, linesOf(second.data, fallback.ratio));
     }
     const fields = parseGifticon(lines, { extraBrands });
     if (barcode) fields.code = barcode.replace(/(\d{4})(?=\d)/g, '$1 ');

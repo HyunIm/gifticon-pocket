@@ -127,5 +127,6 @@ test('a coupon number split into two lines on the same row is put back together'
 
 test('a brand one syllable off is recognised when it is clearly the closest', () => {
   assert.equal(parseGifticon(['꼽네치킨', 'New', '오리지널+시카고피자+콜라1.25ㄴ']).brand, '굽네치킨');
+  assert.equal(parseGifticon(['꼴네치킨', 'New', '오리지널+시카고피자+콜라1.25ㄴ']).brand, '굽네치킨');
   assert.equal(parseGifticon(['유효기간 2027.01.01']).brand, '');
 });
