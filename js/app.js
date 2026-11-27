@@ -1365,6 +1365,131 @@ function openViewer(blob, record) {
   viewer.showModal();
 }
 
+/* ---------- swipe a card: right = 사용 완료 (or 사용 취소), left = 삭제, both undoable ---------- */
+
+async function quickToggleUsed(record) {
+  const used = !record.used;
+  if (used && record.balance > 0 && !(await ask(`잔액 ${formatWon(record.balance)}이 남아 있어요. 전부 사용했나요? 일부만 썼다면 ‘사용 금액 입력’으로 잔액을 줄여 주세요.`, { yes: '다 썼어요', no: '취소' }))) return false;
+  try {
+    await mutate(record.id, old => ({ ...existing(old), used, updatedAt: Date.now() }));
+    await refresh();
+  } catch (error) {
+    announce(errorMessage(error));
+    return false;
+  }
+  if (used) navigator.vibrate?.(30);
+  announce(used ? `‘${record.name}’ 사용 완료` : '사용 처리를 취소했어요.', {
+    label: '실행 취소',
+    run: () => mutate(record.id, old => ({ ...existing(old), used: !used, updatedAt: Date.now() }))
+      .then(refresh).catch(error => announce(errorMessage(error))),
+  });
+  return true;
+}
+
+async function quickDelete(record) {
+  try {
+    await mutate(record.id, () => null);
+    await refresh();
+  } catch (error) {
+    announce(errorMessage(error));
+    return false;
+  }
+  announce('기프티콘을 삭제했어요.', {
+    label: '실행 취소',
+    run: () => mutate(record.id, () => ({ ...record, updatedAt: Date.now() }))
+      .then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
+  });
+  return true;
+}
+
+// One backdrop for the card being dragged, placed behind it: what letting go will do.
+const swipeBack = el('div', 'swipe-back');
+swipeBack.setAttribute('aria-hidden', 'true');
+
+function wireSwipe() {
+  const list = $('#coupon-list');
+  let drag = null;
+  let suppressClick = false;
+  const reset = card => {
+    card.style.transform = '';
+    card.classList.remove('swiping');
+    swipeBack.remove();
+    swipeBack.classList.remove('armed');
+    delete swipeBack.dataset.side;
+  };
+  list.addEventListener('pointerdown', event => {
+    const card = event.target.closest('.coupon-card');
+    if (!card || event.button > 0 || drag) return;
+    drag = { card, id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, state: 'pending', armed: false };
+  });
+  list.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (drag.state === 'pending') {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { drag = null; return; }
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      drag.state = 'swiping';
+      drag.record = records.find(record => record.id === drag.card.dataset.id);
+      if (!drag.record) { drag = null; return; }
+      list.setPointerCapture(event.pointerId);
+      drag.card.classList.add('swiping');
+      const { card } = drag;
+      Object.assign(swipeBack.style, { top: `${card.offsetTop}px`, left: `${card.offsetLeft}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
+      list.append(swipeBack);
+    }
+    const width = drag.card.offsetWidth;
+    const limit = Math.min(130, width * 0.35);
+    // Past the point of no return the card follows the finger more slowly.
+    const shown = Math.abs(dx) <= limit ? dx : Math.sign(dx) * (limit + (Math.abs(dx) - limit) * 0.45);
+    drag.dx = dx;
+    drag.card.style.transform = `translateX(${shown}px)`;
+    const side = dx > 0 ? 'use' : 'delete';
+    if (swipeBack.dataset.side !== side) {
+      swipeBack.dataset.side = side;
+      const undo = side === 'use' && drag.record.used;
+      swipeBack.replaceChildren(icon(side === 'delete' ? 'trash' : undo ? 'undo' : 'check'),
+        el('span', '', side === 'delete' ? '삭제' : undo ? '사용 취소' : '사용 완료'));
+    }
+    const armed = Math.abs(dx) >= limit;
+    if (armed !== drag.armed) {
+      drag.armed = armed;
+      swipeBack.classList.toggle('armed', armed);
+      if (armed) navigator.vibrate?.(10);
+    }
+  });
+  const finish = async event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { card, state, armed, dx, record } = drag;
+    drag = null;
+    if (state !== 'swiping') return;
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    if (!armed || event.type === 'pointercancel') {
+      card.classList.add('swipe-return');
+      reset(card);
+      setTimeout(() => card.classList.remove('swipe-return'), 250);
+      return;
+    }
+    card.classList.add('swipe-return');
+    card.style.transform = `translateX(${Math.sign(dx) * (card.offsetWidth + 40)}px)`;
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const done = dx > 0 ? await quickToggleUsed(record) : await quickDelete(record);
+    card.classList.remove('swipe-return');
+    reset(card);
+    if (!done) {
+      card.classList.add('swipe-return');
+      setTimeout(() => card.classList.remove('swipe-return'), 250);
+    }
+  };
+  list.addEventListener('pointerup', finish);
+  list.addEventListener('pointercancel', finish);
+  // A drag is not a tap: it must not open the details.
+  list.addEventListener('click', event => {
+    if (suppressClick && event.target.closest('.coupon-card')) { event.stopPropagation(); event.preventDefault(); }
+  }, true);
+}
+
 function confirmDelete(record) {
   const shell = openDialog('기프티콘을 삭제할까요?', { kind: 'confirm', id: record.id });
   const body = el('div', 'dialog-body');
@@ -1750,6 +1875,7 @@ function wireEvents() {
     setFilter(target.classList.contains('stat') && filter === next ? 'all' : next);
   });
   $('#settings-button').addEventListener('click', settings);
+  wireSwipe();
   wireTabbar();
   $('#search').addEventListener('input', render);
   $('#category').addEventListener('change', render);
