@@ -146,6 +146,7 @@ function render() {
     setTimeout(() => card.classList.remove('just-added'), 2400);
   }
   justAdded.clear();
+  syncSelection();
   updateAppBadge(counts.expiring);
   updateUrgent(today);
   saveView();
@@ -258,6 +259,7 @@ function noResults(query, category) {
 }
 
 function setFilter(next) {
+  if (selecting) { selecting = false; selected.clear(); }
   filter = next;
   render();
 }
@@ -1452,6 +1454,97 @@ async function quickDelete(record) {
 const swipeBack = el('div', 'swipe-back');
 swipeBack.setAttribute('aria-hidden', 'true');
 
+/* ---------- select several: long-press a card, then tap others; act on all at once ---------- */
+
+const selected = new Set();
+let selecting = false;
+const selectBar = el('div', 'select-bar');
+selectBar.setAttribute('role', 'toolbar');
+selectBar.setAttribute('aria-label', '선택한 기프티콘');
+selectBar.hidden = true;
+
+function startSelecting(id) {
+  selecting = true;
+  selected.clear();
+  if (id) selected.add(id);
+  navigator.vibrate?.(15);
+  syncSelection();
+}
+
+function stopSelecting() {
+  if (!selecting) return;
+  selecting = false;
+  selected.clear();
+  syncSelection();
+}
+
+function toggleSelected(id) {
+  if (selected.has(id)) selected.delete(id); else selected.add(id);
+  if (!selected.size) { stopSelecting(); return; }
+  syncSelection();
+}
+
+// Card checkmarks and the action bar follow the selection (also after every re-render).
+function syncSelection() {
+  const ids = new Set(records.map(record => record.id));
+  for (const id of selected) if (!ids.has(id)) selected.delete(id);
+  if (selecting && !selected.size && !records.length) selecting = false;
+  document.body.classList.toggle('selecting', selecting);
+  for (const card of all('#coupon-list .coupon-card')) {
+    const on = selecting && selected.has(card.dataset.id);
+    card.classList.toggle('selected', on);
+    if (selecting) card.setAttribute('aria-pressed', String(on)); else card.removeAttribute('aria-pressed');
+  }
+  selectBar.hidden = !selecting;
+  if (!selecting) return;
+  if (!selectBar.isConnected) document.body.append(selectBar);
+  const chosen = records.filter(record => selected.has(record.id));
+  const today = localDay();
+  const usable = chosen.filter(record => isUsable(statusOf(record, today)));
+  const close = button('', 'icon-button', stopSelecting);
+  close.append(icon('close'));
+  close.setAttribute('aria-label', '선택 취소');
+  const actions = el('div', 'select-actions');
+  if (chosen.length === 1) {
+    const [only] = chosen;
+    if (usable.length && (only.image || only.code)) actions.append(button('보여주기', 'button-secondary', () => { stopSelecting(); openViewer(only.image, only); }));
+    actions.append(button('수정', 'button-secondary', () => { stopSelecting(); editor(only); }));
+  }
+  if (usable.length) actions.append(button('사용 완료', 'button-primary', () => bulkUsed(usable)));
+  actions.append(button('삭제', 'button-danger', () => bulkDelete(chosen)));
+  selectBar.replaceChildren(close, el('strong', 'select-count', `${chosen.length}개 선택`), actions);
+}
+
+async function bulkUsed(list) {
+  const withMoney = list.filter(record => record.balance > 0);
+  if (withMoney.length && !(await ask(`잔액이 남은 금액권 ${withMoney.length}개가 있어요. 모두 사용 완료할까요?`, { yes: '모두 사용 완료', no: '취소' }))) return;
+  const now = Date.now();
+  try {
+    await putMany(list.map(record => ({ ...existing(record), used: true, updatedAt: now })));
+  } catch (error) { announce(errorMessage(error)); return; }
+  stopSelecting();
+  await refresh();
+  navigator.vibrate?.(30);
+  announce(`${list.length}개를 사용 완료했어요.`, {
+    label: '실행 취소',
+    run: () => putMany(list.map(record => ({ ...existing(record), used: record.used, updatedAt: Date.now() })))
+      .then(refresh).catch(error => announce(errorMessage(error))),
+  });
+}
+
+async function bulkDelete(list) {
+  try {
+    await deleteMany(list.map(record => record.id));
+  } catch (error) { announce(errorMessage(error)); return; }
+  stopSelecting();
+  await refresh();
+  announce(`${list.length}개를 삭제했어요.`, {
+    label: '실행 취소',
+    run: () => putMany(list.map(record => ({ ...record, updatedAt: Date.now() })))
+      .then(refresh).then(() => announce('삭제를 취소했어요.')).catch(error => announce(errorMessage(error))),
+  });
+}
+
 // Sideways swipes in the full-screen coupon and the details sheet move to the next coupon.
 function horizontalSwipe(target, onSwipe) {
   let start = null;
@@ -1508,6 +1601,7 @@ function wireSwipe() {
   const list = $('#coupon-list');
   let drag = null;
   let suppressClick = false;
+  let pressTimer;
   const reset = card => {
     card.style.transform = '';
     card.classList.remove('swiping');
@@ -1519,13 +1613,22 @@ function wireSwipe() {
     const card = event.target.closest('.coupon-card');
     if (!card || event.button > 0 || drag) return;
     drag = { card, id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, state: 'pending', armed: false };
+    // Holding a card still starts selecting (or adds it while selecting).
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      if (!drag || drag.card !== card || drag.state !== 'pending') return;
+      drag = null;
+      suppressClick = true;
+      if (selecting) toggleSelected(card.dataset.id); else startSelecting(card.dataset.id);
+    }, 450);
   });
   list.addEventListener('pointermove', event => {
     if (!drag || event.pointerId !== drag.id) return;
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
     if (drag.state === 'pending') {
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { drag = null; return; }
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(pressTimer);
+      if (selecting || (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx))) { if (Math.abs(dx) > 8 || Math.abs(dy) > 8) drag = null; return; }
       if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       drag.state = 'swiping';
       drag.record = records.find(record => record.id === drag.card.dataset.id);
@@ -1557,6 +1660,8 @@ function wireSwipe() {
     }
   });
   const finish = async event => {
+    clearTimeout(pressTimer);
+    if (suppressClick && !drag) { setTimeout(() => { suppressClick = false; }, 0); return; }
     if (!drag || event.pointerId !== drag.id) return;
     const { card, state, armed, dx, record } = drag;
     drag = null;
@@ -1582,10 +1687,24 @@ function wireSwipe() {
   };
   list.addEventListener('pointerup', finish);
   list.addEventListener('pointercancel', finish);
-  // A drag is not a tap: it must not open the details.
+  // A drag (or a long press) is not a tap: it must not open the details. While selecting, a tap
+  // picks the card instead.
   list.addEventListener('click', event => {
-    if (suppressClick && event.target.closest('.coupon-card')) { event.stopPropagation(); event.preventDefault(); }
+    const card = event.target.closest('.coupon-card');
+    if (!card) return;
+    if (suppressClick) { event.stopPropagation(); event.preventDefault(); return; }
+    if (selecting) { event.stopPropagation(); event.preventDefault(); toggleSelected(card.dataset.id); }
   }, true);
+  // Right-click (desktop) also starts selecting.
+  list.addEventListener('contextmenu', event => {
+    const card = event.target.closest('.coupon-card');
+    if (!card) return;
+    event.preventDefault();
+    if (selecting) toggleSelected(card.dataset.id); else startSelecting(card.dataset.id);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && selecting && !dialog.open && !viewer.open) stopSelecting();
+  });
 }
 
 function confirmDelete(record) {
