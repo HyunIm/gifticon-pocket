@@ -60,7 +60,7 @@
       <button type="button" class="stat" data-filter="used" aria-pressed="false"><span class="stat-icon mint"><svg aria-hidden="true"><use href="#check"/></svg></span><span class="stat-text"><span class="stat-label">사용 완료</span><span class="stat-value"><b data-count="used">0</b><span>개</span></span></span></button>
     </section>
     <section class="collection" aria-labelledby="collection-heading">
-      <div class="section-head"><h2 id="collection-heading">내 기프티콘 <span id="result-count">0</span></h2>
+      <div class="section-head"><h2 id="collection-heading"><span id="collection-title">내 기프티콘</span> <span id="result-count">0</span></h2>
         <div class="tools">
           <label class="search"><svg aria-hidden="true"><use href="#searchIcon"/></svg><input id="search" type="search" aria-label="브랜드, 상품명, 메모, 쿠폰 번호 검색" placeholder="브랜드, 상품명, 초성 검색" enterkeyhint="search"></label>
           <label class="select"><svg aria-hidden="true"><use href="#tagIcon"/></svg><select id="category" aria-label="카테고리"><option value="all">전체 카테고리</option><option>카페</option><option>외식</option><option>편의점</option><option>쇼핑</option><option>기타</option></select><svg class="chevron" aria-hidden="true"><use href="#down"/></svg></label>
@@ -80,6 +80,16 @@
     </section>
   </main>
   <footer class="wrap"><svg aria-hidden="true"><use href="#lock"/></svg>기프티콘 이미지와 쿠폰 번호는 이 기기에만 저장돼요.</footer>
+  <nav class="tabbar" aria-label="메뉴">
+    <div class="tabbar-glass">
+      <span class="tab-pill" aria-hidden="true"></span>
+      <button type="button" class="tab" data-tab="usable"><svg aria-hidden="true"><use href="#ticket"/></svg><span>보관함</span></button>
+      <button type="button" class="tab" data-tab="expiring"><svg aria-hidden="true"><use href="#clock"/></svg><span>임박</span><b class="tab-badge" hidden></b></button>
+      <button type="button" class="tab" data-tab="past"><svg aria-hidden="true"><use href="#check"/></svg><span>지난</span></button>
+      <button type="button" class="tab" data-action="settings"><svg aria-hidden="true"><use href="#gear"/></svg><span>설정</span></button>
+    </div>
+    <button type="button" class="tab-add" data-action="add" aria-label="기프티콘 등록"><svg aria-hidden="true"><use href="#plus"/></svg></button>
+  </nav>
   <button type="button" class="fab" data-action="add"><svg aria-hidden="true"><use href="#plus"/></svg>등록</button>
   <dialog id="install-guide" class="coupon-dialog" aria-labelledby="install-title">
     <div class="dialog-shell">

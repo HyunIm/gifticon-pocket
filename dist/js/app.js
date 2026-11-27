@@ -116,6 +116,8 @@ function render() {
   const counts = summarize(records, today);
   all('[data-count]').forEach(node => { node.textContent = counts[node.dataset.count] ?? 0; });
   all('[data-filter]').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.filter === filter)));
+  $('#collection-title').textContent = titles[filter] || titles.all;
+  updateTabbar(counts.expiring);
   const shown = sortCoupons(records.filter(record =>
     matchesStatus(filter, statusOf(record, today)) &&
     (category === 'all' || record.category === category) &&
@@ -199,8 +201,15 @@ function withBrandGroups(shown, nodes) {
   return out;
 }
 
+const titles = {
+  all: '내 기프티콘', usable: '내 기프티콘', available: '사용 가능', expiring: '만료 임박',
+  used: '사용 완료', expired: '기간 만료', past: '지난 기프티콘',
+};
+
 const emptyMessages = {
   all: '조건에 맞는 기프티콘이 없어요',
+  usable: '사용할 수 있는 기프티콘이 없어요',
+  past: '사용했거나 기간이 지난 기프티콘이 없어요',
   available: '사용할 수 있는 기프티콘이 없어요',
   expiring: '7일 안에 만료되는 기프티콘이 없어요',
   used: '사용 완료한 기프티콘이 없어요',
@@ -242,7 +251,7 @@ function noResults(query, category) {
     box.append(button(searching ? '검색 조건 지우기' : '전체 보기', 'button-secondary', () => {
       $('#search').value = '';
       $('#category').value = 'all';
-      setFilter('all');
+      setFilter(homeFilter());
     }));
   }
   return box;
@@ -253,6 +262,127 @@ function setFilter(next) {
   render();
 }
 
+/* ---------- phone tab bar ---------- */
+
+// Phones get a bottom tab bar (보관함 / 임박 / 지난 / 설정) in place of the filter chips.
+const phone = matchMedia('(max-width: 760px)');
+const TAB_ORDER = ['usable', 'expiring', 'past'];
+const homeFilter = () => (phone.matches ? 'usable' : 'all');
+const tabOf = value => value === 'expiring' ? 'expiring' : ['past', 'used', 'expired'].includes(value) ? 'past' : 'usable';
+
+// Each layout keeps to its own filters: the chips on wide screens, the tabs on phones.
+function fitFilterToLayout() {
+  if (phone.matches && !TAB_ORDER.includes(filter)) filter = tabOf(filter);
+  else if (!phone.matches && ['usable', 'past'].includes(filter)) filter = filter === 'usable' ? 'all' : 'used';
+}
+
+function placePill(tab) {
+  const bar = $('.tabbar-glass');
+  if (!tab || !bar.offsetWidth) return;
+  bar.style.setProperty('--pill-x', `${tab.offsetLeft}px`);
+  bar.style.setProperty('--pill-w', `${tab.offsetWidth}px`);
+}
+
+function updateTabbar(expiring) {
+  const active = tabOf(filter);
+  for (const tab of all('.tab[data-tab]')) {
+    if (tab.dataset.tab === active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
+  if (!tabDrag) placePill($(`.tab[data-tab="${active}"]`));
+  const badge = $('.tab-badge');
+  badge.hidden = !expiring;
+  badge.textContent = expiring > 99 ? '99+' : String(expiring);
+  $('.tab[data-tab="expiring"]').setAttribute('aria-label', expiring ? `임박 ${expiring}개` : '임박');
+}
+
+function switchTab(next) {
+  if (next === tabOf(filter) && TAB_ORDER.includes(filter)) {
+    // Tapping the current tab again goes back to the top, as in native apps.
+    scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    return;
+  }
+  const from = TAB_ORDER.indexOf(tabOf(filter));
+  const to = TAB_ORDER.indexOf(next);
+  setFilter(next);
+  const tab = $(`.tab[data-tab="${next}"]`);
+  tab.classList.remove('pop');
+  void tab.offsetWidth;
+  tab.classList.add('pop');
+  const list = $('.collection');
+  list.dataset.enter = to > from ? 'right' : 'left';
+  list.classList.remove('tab-enter');
+  void list.offsetWidth;
+  list.classList.add('tab-enter');
+  // A new tab starts at its top, unless the list is already in view.
+  const top = list.getBoundingClientRect().top + scrollY - 12;
+  if (scrollY > top) scrollTo({ top });
+}
+
+// The highlight can be dragged along the bar (like a slider) and lands on the tab it is let go over.
+let tabDrag = null;
+function wireTabbar() {
+  const bar = $('.tabbar-glass');
+  const tabs = () => all('.tab[data-tab]', bar);
+  const nearest = x => tabs().reduce((best, tab) => {
+    const d = Math.abs(tab.offsetLeft + tab.offsetWidth / 2 - x);
+    return d < best.d ? { tab, d } : best;
+  }, { tab: null, d: Infinity }).tab;
+  let suppressClick = false;
+  bar.addEventListener('pointerdown', event => {
+    const start = event.target.closest('.tab[data-tab]');
+    if (!start || event.button > 0) return;
+    const pill = $('.tab-pill', bar);
+    tabDrag = { id: event.pointerId, startX: event.clientX, pillX: pill.offsetLeft + (parseFloat(bar.style.getPropertyValue('--pill-x')) || 0), moved: false, over: null };
+  });
+  bar.addEventListener('pointermove', event => {
+    if (!tabDrag || event.pointerId !== tabDrag.id) return;
+    const dx = event.clientX - tabDrag.startX;
+    if (!tabDrag.moved) {
+      if (Math.abs(dx) < 8) return;
+      tabDrag.moved = true;
+      bar.setPointerCapture(event.pointerId);
+      bar.classList.add('dragging');
+    }
+    const list = tabs();
+    const first = list[0];
+    const last = list[list.length - 1];
+    const width = parseFloat(bar.style.getPropertyValue('--pill-w')) || first.offsetWidth;
+    const x = Math.min(Math.max(tabDrag.pillX + dx, first.offsetLeft), last.offsetLeft + last.offsetWidth - width);
+    bar.style.setProperty('--pill-x', `${x}px`);
+    const over = nearest(x + width / 2);
+    if (over !== tabDrag.over) {
+      tabDrag.over = over;
+      for (const tab of list) tab.classList.toggle('drag-over', tab === over);
+      navigator.vibrate?.(8);
+    }
+  });
+  const finish = event => {
+    if (!tabDrag || event.pointerId !== tabDrag.id) return;
+    const { moved, over } = tabDrag;
+    tabDrag = null;
+    bar.classList.remove('dragging');
+    for (const tab of tabs()) tab.classList.remove('drag-over');
+    if (!moved) return;
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    if (over && event.type === 'pointerup') switchTab(over.dataset.tab);
+    else updateTabbar(summarize(records, localDay()).expiring);
+    if (over && over.dataset.tab === tabOf(filter)) placePill(over);
+  };
+  bar.addEventListener('pointerup', finish);
+  bar.addEventListener('pointercancel', finish);
+  bar.addEventListener('click', event => {
+    const tab = event.target.closest('.tab');
+    if (!tab) return;
+    if (suppressClick) { event.preventDefault(); return; }
+    if (tab.dataset.action === 'settings') settings();
+    else switchTab(tab.dataset.tab);
+  });
+  phone.addEventListener('change', () => { fitFilterToLayout(); render(); });
+  addEventListener('resize', () => placePill($('.tab[aria-current="page"]')));
+}
+
 function saveView() {
   store.set(VIEW_KEY, JSON.stringify({ filter, sort: $('#sort').value, category: $('#category').value, showPast }));
 }
@@ -260,11 +390,13 @@ function saveView() {
 function restoreView() {
   try {
     const view = JSON.parse(store.get(VIEW_KEY) || '{}');
-    if (['all', 'available', 'expiring', 'used', 'expired'].includes(view.filter)) filter = view.filter;
+    if (['all', 'available', 'expiring', 'used', 'expired', 'usable', 'past'].includes(view.filter)) filter = view.filter;
     if ([...$('#sort').options].some(o => o.value === view.sort)) $('#sort').value = view.sort;
     if ([...$('#category').options].some(o => o.value === view.category)) $('#category').value = view.category;
     showPast = view.showPast === true;
   } catch { /* first visit */ }
+  if (phone.matches && !store.get(VIEW_KEY)) filter = 'usable';
+  fitFilterToLayout();
 }
 
 function updateAppBadge(count) {
@@ -1618,6 +1750,7 @@ function wireEvents() {
     setFilter(target.classList.contains('stat') && filter === next ? 'all' : next);
   });
   $('#settings-button').addEventListener('click', settings);
+  wireTabbar();
   $('#search').addEventListener('input', render);
   $('#category').addEventListener('change', render);
   $('#sort').addEventListener('change', render);
@@ -1693,7 +1826,9 @@ function openFromURL(params) {
     if (records.some(record => record.id === params.get('coupon'))) details(params.get('coupon'));
     else announce('알림의 기프티콘을 찾지 못했어요. 이미 삭제했을 수 있어요.');
   } else if (['available', 'expiring', 'used', 'expired'].includes(params.get('filter'))) {
-    setFilter(params.get('filter'));
+    filter = params.get('filter');
+    fitFilterToLayout();
+    render();
   }
 }
 
@@ -1705,7 +1840,7 @@ async function start() {
   restoreView();
   const params = new URLSearchParams(location.search);
   const requested = params.get('filter');
-  if (['available', 'expiring', 'used', 'expired'].includes(requested)) filter = requested;
+  if (['available', 'expiring', 'used', 'expired'].includes(requested)) { filter = requested; fitFilterToLayout(); }
   try {
     await openDB();
     ready = true;
