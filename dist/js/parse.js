@@ -173,7 +173,9 @@ const fixMenuTags = name => name
   .replace(/^\([I1l|][CcG6(0O][E36]\)/, '(ICE)')
   .replace(/^\(H[O0]T\)/i, '(HOT)')
   // "e카드" (gift card) loses its e to a 6.
-  .replace(/(^|\s)6\s?카드/, '$1e카드');
+  .replace(/(^|\s)6\s?카드/, '$1e카드')
+  // Drink sizes (R, L, T ...) after a drink: a lone 8 at the end is an R.
+  .replace(/(아메리카노|라떼|커피|티|에이드|콜드브루|모카|마키아또|스무디|프라푸치노|초콜릿|초코)\s+8$/, '$1 R');
 
 function stripBrandPrefix(name, brand, extra) {
   name = fixMenuTags(name);
@@ -227,7 +229,7 @@ function pickName(lines, brand, extra) {
   if (!best) return '';
   // Long names wrap onto the next line in the same (large) type.
   const sameSize = other => other && best && lines[best.index].h && other.h &&
-    Math.abs(other.h - lines[best.index].h) / lines[best.index].h < 0.12 && nameCandidate(other, extra);
+    Math.abs(other.h - lines[best.index].h) / lines[best.index].h < 0.15 && nameCandidate(other, extra);
   let start = best.index;
   let end = best.index;
   while (sameSize(lines[start - 1]) && end - start < 2) start--;

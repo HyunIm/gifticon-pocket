@@ -127,5 +127,11 @@ test('a coupon number split into two lines on the same row is put back together'
 
 test('a brand one syllable off is recognised when it is clearly the closest', () => {
   assert.equal(parseGifticon(['꼽네치킨', 'New', '오리지널+시카고피자+콜라1.25ㄴ']).brand, '굽네치킨');
+  assert.equal(parseGifticon(['꼴네치킨', 'New', '오리지널+시카고피자+콜라1.25ㄴ']).brand, '굽네치킨');
   assert.equal(parseGifticon(['유효기간 2027.01.01']).brand, '');
+});
+
+test('a drink size R read as 8 is put back', () => {
+  assert.equal(parseGifticon(['투썸플레이스', '떠먹는 아박 + 아메리카노 8']).name, '떠먹는 아박 + 아메리카노 R');
+  assert.equal(parseGifticon(['스타벅스', '아이스 카페 아메리카노 T 2잔']).name, '아이스 카페 아메리카노 T 2잔');
 });
