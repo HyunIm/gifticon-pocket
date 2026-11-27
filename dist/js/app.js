@@ -1571,7 +1571,8 @@ async function quickDelete(record) {
 
 // One backdrop for the card being dragged, placed behind it: what letting go will do.
 const swipeBack = el('div', 'swipe-back');
-// Swiping left only uncovers a 삭제 button (OPEN px wide); deleting takes a tap on it.
+// Swiping only uncovers a button (OPEN px wide): 사용 완료 on the left, 삭제 on the right.
+// Nothing happens until that button is tapped.
 const OPEN = 96;
 let openSwipe = null;
 function closeSwipe(animate = true) {
@@ -1789,37 +1790,32 @@ function wireSwipe() {
       Object.assign(swipeBack.style, { top: `${cardBox.top - listBox.top}px`, left: `${cardBox.left - listBox.left}px`, width: `${card.offsetWidth}px`, height: `${card.offsetHeight}px` });
       list.append(swipeBack);
     }
-    const width = drag.card.offsetWidth;
-    // Right: past `limit` letting go marks it used. Left: the card stops at the 삭제 button.
-    const limit = dx > 0 ? Math.min(130, width * 0.35) : OPEN;
-    // Past the limit the card follows the finger more slowly.
-    const shown = Math.abs(dx) <= limit ? dx : Math.sign(dx) * (limit + (Math.abs(dx) - limit) * (dx > 0 ? 0.45 : 0.2));
+    // The card stops at the button; further it follows the finger only a little.
+    const shown = Math.abs(dx) <= OPEN ? dx : Math.sign(dx) * (OPEN + (Math.abs(dx) - OPEN) * 0.2);
     drag.dx = dx;
     drag.card.style.transform = `translateX(${shown}px)`;
     const side = dx > 0 ? 'use' : 'delete';
     if (swipeBack.dataset.side !== side) {
       swipeBack.dataset.side = side;
-      if (side === 'delete') {
-        const record = drag.record;
-        const remove = button('', 'swipe-delete', async () => {
-          const card = openSwipe?.card;
-          openSwipe = null;
-          if (card) {
-            card.classList.add('swipe-return');
-            card.style.transform = `translateX(-${card.offsetWidth + 40}px)`;
-            await new Promise(resolve => setTimeout(resolve, 180));
-          }
-          if (!(await quickDelete(record)) && card) { card.style.transform = ''; swipeBack.remove(); }
-        });
-        remove.append(icon('trash'), el('span', '', '삭제'));
-        remove.style.width = `${OPEN}px`;
-        swipeBack.replaceChildren(remove);
-      } else {
-        const undo = drag.record.used;
-        swipeBack.replaceChildren(icon(undo ? 'undo' : 'check'), el('span', '', undo ? '사용 취소' : '사용 완료'));
-      }
+      const record = drag.record;
+      const undo = side === 'use' && record.used;
+      const action = button('', 'swipe-action', async () => {
+        const card = openSwipe?.card;
+        openSwipe = null;
+        if (card) {
+          card.classList.add('swipe-return');
+          card.style.transform = `translateX(${side === 'use' ? '' : '-'}${card.offsetWidth + 40}px)`;
+          await new Promise(resolve => setTimeout(resolve, 180));
+        }
+        const done = side === 'use' ? await quickToggleUsed(record) : await quickDelete(record);
+        if (!done && card) { card.style.transform = ''; swipeBack.remove(); }
+      });
+      action.append(icon(side === 'delete' ? 'trash' : undo ? 'undo' : 'check'),
+        el('span', '', side === 'delete' ? '삭제' : undo ? '사용 취소' : '사용 완료'));
+      action.style.width = `${OPEN}px`;
+      swipeBack.replaceChildren(action);
     }
-    const armed = dx > 0 && Math.abs(dx) >= limit;
+    const armed = Math.abs(dx) >= OPEN;
     if (armed !== drag.armed) {
       drag.armed = armed;
       swipeBack.classList.toggle('armed', armed);
@@ -1830,36 +1826,23 @@ function wireSwipe() {
     clearTimeout(pressTimer);
     if (suppressClick && !drag) { setTimeout(() => { suppressClick = false; }, 0); return; }
     if (!drag || event.pointerId !== drag.id) return;
-    const { card, state, armed, dx, record } = drag;
+    const { card, state, dx, record } = drag;
     drag = null;
     if (state !== 'swiping') return;
     suppressClick = true;
     setTimeout(() => { suppressClick = false; }, 0);
-    if (dx < 0 && dx <= -OPEN / 2 && event.type !== 'pointercancel') {
-      // Stay open on the 삭제 button until it is tapped or the user touches anything else.
+    if (Math.abs(dx) >= OPEN / 2 && event.type !== 'pointercancel') {
+      // Stay open on the button until it is tapped or the user touches anything else.
       card.classList.add('swipe-return');
-      card.style.transform = `translateX(-${OPEN}px)`;
+      card.style.transform = `translateX(${Math.sign(dx) * OPEN}px)`;
       setTimeout(() => card.classList.remove('swipe-return'), 250);
       openSwipe = { card, record };
-      swipeBack.querySelector('.swipe-delete')?.focus({ preventScroll: true });
-      return;
-    }
-    if (!armed || event.type === 'pointercancel') {
-      card.classList.add('swipe-return');
-      reset(card);
-      setTimeout(() => card.classList.remove('swipe-return'), 250);
+      swipeBack.querySelector('.swipe-action')?.focus({ preventScroll: true });
       return;
     }
     card.classList.add('swipe-return');
-    card.style.transform = `translateX(${Math.sign(dx) * (card.offsetWidth + 40)}px)`;
-    await new Promise(resolve => setTimeout(resolve, 200));
-    const done = await quickToggleUsed(record);
-    card.classList.remove('swipe-return');
     reset(card);
-    if (!done) {
-      card.classList.add('swipe-return');
-      setTimeout(() => card.classList.remove('swipe-return'), 250);
-    }
+    setTimeout(() => card.classList.remove('swipe-return'), 250);
   };
   list.addEventListener('pointerup', finish);
   list.addEventListener('pointercancel', finish);

@@ -140,10 +140,10 @@ main.wrap{padding-top:32px}
 .swipe-back{position:absolute;z-index:0;display:flex;align-items:center;gap:8px;padding:0 24px;border-radius:16px;font-weight:800;font-size:.9375rem;color:var(--muted);background:var(--surface-2);transition:background .15s,color .15s}
 .swipe-back svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.3,1.4,.45,1)}
 .swipe-back[data-side=delete]{flex-direction:row-reverse}
-.swipe-back.armed[data-side=use]{background:var(--ok-fg);color:var(--surface)}
+.swipe-back[data-side=use]{justify-content:flex-start;padding:0;background:#2e8a57;color:#fff;overflow:hidden}
 .swipe-back[data-side=delete]{justify-content:flex-start;padding:0;background:#d23f37;color:#fff;overflow:hidden}
-.swipe-delete{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:100%;color:#fff;font-weight:800;font-size:.875rem}
-.swipe-delete:focus-visible{outline:3px solid #fff;outline-offset:-6px}
+.swipe-action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:100%;color:#fff;font-weight:800;font-size:.875rem}
+.swipe-action:focus-visible{outline:3px solid #fff;outline-offset:-6px}
 .swipe-back.armed svg{transform:scale(1.2)}
 /* Same-brand coupons as a pile: two cards peek out underneath, a +N tells how many. */
 .coupon-stack{position:relative;display:grid;padding-bottom:14px;min-width:0}
