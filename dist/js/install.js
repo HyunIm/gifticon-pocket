@@ -28,17 +28,17 @@ export function openInstallGuide() {
   const guide = $('#install-guide');
   let steps;
   if (isAppleMobile) {
-    steps = ['Safari에서 이 페이지를 열고 아래쪽(또는 위쪽)의 공유 버튼을 누르세요.',
-      '‘홈 화면에 추가’를 선택하세요. ‘웹 앱으로 열기’가 보이면 켜고 ‘추가’를 누르세요.',
-      '이제 홈 화면의 기프티콘 포켓 아이콘으로 여세요. 쿠폰은 이 앱 안에 따로 보관돼요.'];
+    steps = ['Safari에서 이 페이지를 열고 아래쪽(또는 위쪽)의 공유 버튼을 눌러 주세요.',
+      '‘홈 화면에 추가’를 선택해 주세요. ‘웹 앱으로 열기’가 보이면 켜고 ‘추가’를 눌러 주세요.',
+      '이제 홈 화면의 기프티콘 포켓 아이콘으로 열어 주세요. 쿠폰은 이 앱 안에 따로 보관돼요.'];
   } else if (isMacSafari) {
-    steps = ['Safari의 파일 메뉴에서 ‘Dock에 추가’를 선택하세요.', '앱 이름을 확인하고 ‘추가’를 누르세요.'];
+    steps = ['Safari의 파일 메뉴에서 ‘Dock에 추가’를 선택해 주세요.', '앱 이름을 확인하고 ‘추가’를 눌러 주세요.'];
   } else if (isAndroid) {
-    steps = ['Chrome에서 이 페이지를 열고 브라우저 메뉴(⋮)를 누르세요.',
-      '‘홈 화면에 추가’ 또는 ‘앱 설치’를 선택하고 화면 안내를 따르세요.'];
+    steps = ['Chrome에서 이 페이지를 열고 브라우저 메뉴(⋮)를 눌러 주세요.',
+      '‘홈 화면에 추가’ 또는 ‘앱 설치’를 선택하고 화면 안내를 따라 주세요.'];
   } else {
-    steps = ['주소창의 앱 설치 아이콘을 선택하세요.',
-      '아이콘이 보이지 않으면 브라우저 메뉴에서 이 페이지를 앱으로 설치하는 항목을 선택하세요.'];
+    steps = ['주소창의 앱 설치 아이콘을 눌러 주세요.',
+      '아이콘이 보이지 않으면 브라우저 메뉴에서 이 페이지를 앱으로 설치하는 항목을 선택해 주세요.'];
   }
   $('#install-steps').replaceChildren(...steps.map(text => el('li', '', text)));
   if (!guide.open) guide.showModal();
@@ -73,7 +73,7 @@ function warnInAppBrowser() {
       : async () => {
         try {
           await navigator.clipboard.writeText(home.href);
-          showBanner('in-app', '주소를 복사했어요. Safari나 Chrome 주소창에 붙여 넣어 여세요.', [['닫기', b => b.remove()]]);
+          showBanner('in-app', '주소를 복사했어요. Safari나 Chrome 주소창에 붙여 넣어 열어 주세요.', [['닫기', b => b.remove()]]);
         } catch {
           showBanner('in-app', `Safari나 Chrome에서 ${home.href} 주소를 열어 주세요.`, [['닫기', b => b.remove()]]);
         }
