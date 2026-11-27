@@ -21,8 +21,6 @@ jobs:
       - name: Test
         run: npm test
 
-      # dist/sw.js lists every app file with its hash; a stale list breaks offline use.
-      - name: Offline file list is up to date
-        run: |
-          npm run build
-          git diff --exit-code -- dist/sw.js || { echo "::error::dist/sw.js is out of date. Run npm run build and commit it."; exit 1; }
+      # The offline file list (dist/sw-manifest.js) is generated at deploy; make sure it builds.
+      - name: Build offline file list
+        run: npm run build
